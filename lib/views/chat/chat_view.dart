@@ -38,6 +38,7 @@ class _ChatViewContentState extends State<_ChatViewContent> {
   final _textController = TextEditingController();
   bool _showRecorder = false;
   CompressionResult? _lastShownCompression;
+  String? _lastEditingMessageId;
 
   @override
   void dispose() {
@@ -107,7 +108,7 @@ class _ChatViewContentState extends State<_ChatViewContent> {
     });
  }
 
-  Widget _buildReadReceipt(String status, Map<String, dynamic> readBy) {
+  Widget _buildReadReceipt(String status, Map readBy) {
     IconData iconData;
     Color iconColor;
 
@@ -133,10 +134,47 @@ class _ChatViewContentState extends State<_ChatViewContent> {
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     final chatViewModel = context.watch<ChatViewModel>();
+    
+    // Auto-populate text field when edit is tapped
+    if (chatViewModel.editingMessageId != null &&
+        chatViewModel.editingMessageId != _lastEditingMessageId) {
+      _lastEditingMessageId = chatViewModel.editingMessageId;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _textController.text = chatViewModel.editingMessageText ?? '';
+      });
+    } else if (chatViewModel.editingMessageId == null &&
+        _lastEditingMessageId != null) {
+      _lastEditingMessageId = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _textController.clear();
+      });
+    }
+
     _maybeShowCompressionSnackbar(chatViewModel);
 
     return Scaffold(
-      appBar: AppBar(title: Text(chatViewModel.conversationId)),
+      appBar: AppBar(
+        title: chatViewModel.isSearching
+            ? TextField(
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Search in chat...',
+                  border: InputBorder.none,
+                  hintStyle: TextStyle(color: Colors.white70),
+                ),
+                style: const TextStyle(color: Colors.white),
+                cursorColor: Colors.white,
+                onChanged: chatViewModel.setSearchQuery,
+              )
+            : Text(chatViewModel.conversationId),
+        actions: [
+          IconButton(
+            icon: Icon(
+                chatViewModel.isSearching ? Icons.close : Icons.search),
+            onPressed: chatViewModel.toggleSearch,
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Expanded(
@@ -147,7 +185,25 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                   return const LoadingIndicator();
                 }
                 
-                final docs = snapshot.data?.docs ?? [];
+                var docs = snapshot.data?.docs ?? [];
+                
+                // Filter out messages deleted for me
+                docs = docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final deletedFor = List<String>.from(data['deletedFor'] ?? []);
+                  return !deletedFor.contains(uid);
+                }).toList();
+
+                if (chatViewModel.searchQuery.isNotEmpty) {
+                  final query = chatViewModel.searchQuery.toLowerCase();
+                  docs = docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final type = data['type'] as String? ?? 'text';
+                    if (type != 'text') return false;
+                    final text = data['text'] as String? ?? '';
+                    return text.toLowerCase().contains(query);
+                  }).toList();
+                }
                 
                 if (docs.isEmpty) {
                   return const EmptyState(
@@ -190,7 +246,7 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                                 const SizedBox(height: 2),
                                 _buildReadReceipt(
                                     data['status'] as String? ?? 'sent',
-                                    data['readBy'] as Map<String, dynamic>? ?? {}),
+                                    data['readBy'] as Map? ?? {}),
                               ]
                             ],
                           ),
@@ -216,7 +272,7 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                                 const SizedBox(height: 4),
                                 _buildReadReceipt(
                                     data['status'] as String? ?? 'sent',
-                                    data['readBy'] as Map<String, dynamic>? ?? {}),
+                                    data['readBy'] as Map? ?? {}),
                               ]
                             ],
                           ),
@@ -227,6 +283,7 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                         messageId: doc.id,
                         data: data,
                         isMine: isMine,
+                        searchQuery: chatViewModel.searchQuery,
                       );
                     }
 
@@ -289,15 +346,67 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                       color: Colors.white,
                       boxShadow: [
                         BoxShadow(
-                          color: AppTheme.textDark.withOpacity(0.05),
+                          color: AppTheme.textDark.withValues(alpha: 0.05 * 255),
                           blurRadius: 10,
                           offset: const Offset(0, -2),
                         ),
                       ],
                     ),
-                    child: Row(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Attachment button
+                        if (chatViewModel.editingMessageId != null)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: AppTheme.lightPeach,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.edit,
+                                    size: 16, color: AppTheme.primaryOrange),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Editing message',
+                                        style: TextStyle(
+                                          color: AppTheme.primaryOrange,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      Text(
+                                        chatViewModel.editingMessageText ?? '',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                            fontSize: 12, color: Colors.black54),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.close, size: 18),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () {
+                                    chatViewModel.cancelEditing();
+                                    _textController.clear();
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        Row(
+                          children: [
+                            // Attachment button
                         IconButton(
                           icon: const Icon(Icons.attach_file_rounded,
                               color: AppTheme.primaryOrange),

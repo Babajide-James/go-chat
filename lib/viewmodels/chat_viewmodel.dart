@@ -46,9 +46,19 @@ class ChatViewModel extends ChangeNotifier {
   bool _isTyping = false;
   double? _mediaUploadProgress;
   CompressionResult? _lastCompression;
+  
+  bool _isSearching = false;
+  String _searchQuery = '';
+
+  String? _editingMessageId;
+  String? _editingMessageText;
 
   double? get mediaUploadProgress => _mediaUploadProgress;
   CompressionResult? get lastCompression => _lastCompression;
+  bool get isSearching => _isSearching;
+  String get searchQuery => _searchQuery;
+  String? get editingMessageId => _editingMessageId;
+  String? get editingMessageText => _editingMessageText;
 
   ChatViewModel(this.conversationId) {
     // Optional: could initialize listeners here if needed
@@ -102,6 +112,11 @@ class ChatViewModel extends ChangeNotifier {
   Future<void> sendTextMessage(String text) async {
     final uid = _currentUserId;
     if (uid == null || text.trim().isEmpty) return;
+
+    if (_editingMessageId != null) {
+      await _editMessage(text);
+      return;
+    }
 
     final timestamp = Timestamp.now();
     final message = Message(
@@ -296,6 +311,67 @@ class ChatViewModel extends ChangeNotifier {
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
+    }
+  }
+
+  void toggleSearch() {
+    _isSearching = !_isSearching;
+    if (!_isSearching) {
+      _searchQuery = '';
+    }
+    notifyListeners();
+  }
+
+  void setSearchQuery(String query) {
+    _searchQuery = query;
+    notifyListeners();
+  }
+
+  void setEditingMessage(String id, String text) {
+    _editingMessageId = id;
+    _editingMessageText = text;
+    notifyListeners();
+  }
+
+  void cancelEditing() {
+    _editingMessageId = null;
+    _editingMessageText = null;
+    notifyListeners();
+  }
+
+  Future<void> _editMessage(String newText) async {
+    if (_editingMessageId == null) return;
+    try {
+      await _firestoreService.editMessage(
+          conversationId, _editingMessageId!, newText);
+      await _firestoreService.updateConversationLastMessage(
+          conversationId, 'Edited: $newText', Timestamp.now());
+    } catch (e) {
+      debugPrint('Error editing message: $e');
+    } finally {
+      cancelEditing();
+    }
+  }
+
+  Future<void> deleteMessageForMe(String messageId) async {
+    final uid = _currentUserId;
+    if (uid == null) return;
+    try {
+      await _firestoreService.deleteMessageForMe(
+          conversationId, messageId, uid);
+    } catch (e) {
+      debugPrint('Error deleting message for me: $e');
+    }
+  }
+
+  Future<void> deleteMessageForEveryone(String messageId) async {
+    try {
+      await _firestoreService.deleteMessageForEveryone(
+          conversationId, messageId);
+      await _firestoreService.updateConversationLastMessage(
+          conversationId, '🚫 This message was deleted.', Timestamp.now());
+    } catch (e) {
+      debugPrint('Error deleting message for everyone: $e');
     }
   }
 

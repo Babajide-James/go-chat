@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:visibility_detector/visibility_detector.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../viewmodels/chat_viewmodel.dart';
-import 'reaction_picker.dart';
+import 'message_actions_sheet.dart';
 
 class MessageBubble extends StatelessWidget {
   final String messageId;
   final Map<String, dynamic> data;
   final bool isMine;
+  final String? searchQuery;
 
   const MessageBubble({
     super.key,
     required this.messageId,
     required this.data,
     required this.isMine,
+    this.searchQuery,
   });
 
   @override
@@ -29,20 +30,16 @@ class MessageBubble extends StatelessWidget {
       reactionCounts[e] = (reactionCounts[e] ?? 0) + 1;
     }
 
-    return VisibilityDetector(
-      key: Key(messageId),
-      onVisibilityChanged: (info) {
-        if (!isMine && info.visibleFraction > 0.5) {
-          chatViewModel.markAsRead(messageId, data);
-        }
-      },
-      child: Align(
-        alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-        child: GestureDetector(
-          onLongPress: () {
-            _showReactionPicker(context, chatViewModel);
-          },
-          child: Stack(
+    final isDeleted = data['deletedForEveryone'] == true;
+    final isEdited = data['editedAt'] != null;
+
+    return Align(
+      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+      child: GestureDetector(
+        onLongPress: () {
+          _showActionsSheet(context);
+        },
+        child: Stack(
           clipBehavior: Clip.none,
           children: [
             Container(
@@ -58,7 +55,7 @@ class MessageBubble extends StatelessWidget {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: AppTheme.textDark.withOpacity(0.05),
+                    color: AppTheme.textDark.withValues(alpha: 0.05 * 255),
                     blurRadius: 5,
                     offset: const Offset(0, 2),
                   ),
@@ -69,17 +66,36 @@ class MessageBubble extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Flexible(
-                    child: Text(
-                      data['text'] ?? '',
-                      style: TextStyle(
-                        color: isMine ? Colors.white : AppTheme.textDark,
-                        fontSize: 16,
+                    child: isDeleted
+                        ? Text(
+                            '🚫 This message was deleted.',
+                            style: TextStyle(
+                              color: isMine ? Colors.white70 : Colors.grey,
+                              fontStyle: FontStyle.italic,
+                              fontSize: 16,
+                            ),
+                          )
+                        : _buildMessageText(
+                            data['text'] ?? '',
+                            isMine ? Colors.white : AppTheme.textDark,
+                            searchQuery,
+                          ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (isEdited && !isDeleted)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4.0),
+                      child: Text(
+                        '(edited)',
+                        style: TextStyle(
+                          color: isMine ? Colors.white70 : Colors.grey,
+                          fontSize: 10,
+                        ),
                       ),
                     ),
-                  ),
                   if (isMine) ...[
                     const SizedBox(width: 8),
-                    _buildReadReceipt(data['status'] as String? ?? 'sent', data['readBy'] as Map<String, dynamic>? ?? {}),
+                    _buildReadReceipt(data['status'] as String? ?? 'sent', data['readBy'] as Map? ?? {}),
                   ],
                 ],
               ),
@@ -97,7 +113,38 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildReadReceipt(String status, Map<String, dynamic> readBy) {
+  Widget _buildMessageText(String text, Color textColor, String? query) {
+    if (query == null || query.isEmpty || !text.toLowerCase().contains(query.toLowerCase())) {
+      return Text(
+        text,
+        style: TextStyle(color: textColor, fontSize: 16),
+      );
+    }
+
+    final lowerText = text.toLowerCase();
+    final lowerQuery = query.toLowerCase();
+    final matchStart = lowerText.indexOf(lowerQuery);
+    final matchEnd = matchStart + query.length;
+
+    return RichText(
+      text: TextSpan(
+        style: TextStyle(color: textColor, fontSize: 16),
+        children: [
+          TextSpan(text: text.substring(0, matchStart)),
+          TextSpan(
+            text: text.substring(matchStart, matchEnd),
+            style: const TextStyle(
+              backgroundColor: Colors.yellow,
+              color: Colors.black,
+            ),
+          ),
+          TextSpan(text: text.substring(matchEnd)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReadReceipt(String status, Map readBy) {
     IconData iconData;
     Color iconColor;
 
@@ -128,7 +175,7 @@ class MessageBubble extends StatelessWidget {
         border: Border.all(color: AppTheme.lightPeach, width: 1),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.textDark.withOpacity(0.1),
+            color: AppTheme.textDark.withValues(alpha: 0.1 * 255),
             blurRadius: 2,
             offset: const Offset(0, 1),
           ),
@@ -149,33 +196,16 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  void _showReactionPicker(BuildContext context, ChatViewModel chatViewModel) {
-    showDialog(
+  void _showActionsSheet(BuildContext context) {
+    showModalBottomSheet(
       context: context,
-      barrierColor: Colors.transparent,
-      builder: (context) {
-        return Stack(
-          children: [
-            GestureDetector(
-              onTap: () => Navigator.of(context).pop(),
-              child: Container(
-                color: Colors.transparent,
-              ),
-            ),
-            Center(
-              child: Material(
-                color: Colors.transparent,
-                child: ReactionPicker(
-                  onEmojiSelected: (emoji) {
-                    Navigator.of(context).pop();
-                    chatViewModel.toggleReaction(messageId, emoji);
-                  },
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => MessageActionsSheet(
+        messageId: messageId,
+        data: data,
+        isMine: isMine,
+      ),
     );
   }
 }

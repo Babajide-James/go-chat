@@ -120,4 +120,43 @@ class FirestoreService {
       'status': 'seen', // Simplifying status logic; effectively 'seen' when any recipient reads it
     });
   }
+
+  Future<void> editMessage(
+      String conversationId, String messageId, String newText) {
+    return _firestore
+        .collection(FirestorePaths.conversations)
+        .doc(conversationId)
+        .collection(FirestorePaths.messages)
+        .doc(messageId)
+        .update({
+      'text': newText,
+      'editedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> deleteMessageForMe(
+      String conversationId, String messageId, String uid) {
+    return _firestore
+        .collection(FirestorePaths.conversations)
+        .doc(conversationId)
+        .collection(FirestorePaths.messages)
+        .doc(messageId)
+        .update({
+      'deletedFor': FieldValue.arrayUnion([uid]),
+    });
+  }
+
+  Future<void> deleteMessageForEveryone(
+      String conversationId, String messageId) {
+    return _firestore
+        .collection(FirestorePaths.conversations)
+        .doc(conversationId)
+        .collection(FirestorePaths.messages)
+        .doc(messageId)
+        .update({
+      'deletedForEveryone': true,
+      'text': null,
+      'mediaUrl': null, // optional: you could clean up storage too
+    });
+  }
 }
