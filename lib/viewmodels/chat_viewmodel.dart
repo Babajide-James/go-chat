@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../core/services/firestore_service.dart';
+import '../core/constants/firestore_paths.dart';
 import '../core/enums/message_type.dart';
 import '../core/enums/message_status.dart';
 import '../models/message.dart';
@@ -12,7 +13,7 @@ class ChatViewModel extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
   final String? _currentUserId = FirebaseAuth.instance.currentUser?.uid;
   final ScrollController scrollController = ScrollController();
-  
+
   StreamSubscription? _messagesSubscription;
   Timer? _typingDebounce;
   Timer? _idleTimer;
@@ -28,7 +29,10 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   Stream<DocumentSnapshot> get conversationStream {
-    return FirebaseFirestore.instance.collection('conversations').doc(conversationId).snapshots();
+    return FirebaseFirestore.instance
+        .collection('conversations')
+        .doc(conversationId)
+        .snapshots();
   }
 
   void onTextChanged(String text) {
@@ -38,7 +42,11 @@ class ChatViewModel extends ChangeNotifier {
 
     if (!_isTyping && text.isNotEmpty) {
       _isTyping = true;
-      _firestoreService.updateTypingStatus(conversationId, _currentUserId!, true);
+      _firestoreService.updateTypingStatus(
+        conversationId,
+        _currentUserId,
+        true,
+      );
     }
 
     if (text.isEmpty) {
@@ -58,7 +66,7 @@ class ChatViewModel extends ChangeNotifier {
   void _clearTypingStatus() {
     if (_currentUserId == null || !_isTyping) return;
     _isTyping = false;
-    _firestoreService.updateTypingStatus(conversationId, _currentUserId!, false);
+    _firestoreService.updateTypingStatus(conversationId, _currentUserId, false);
   }
 
   Future<void> sendTextMessage(String text) async {
@@ -81,16 +89,58 @@ class ChatViewModel extends ChangeNotifier {
 
     try {
       _clearTypingStatus(); // Clear typing status immediately on send
-      
+
       await _firestoreService.sendMessage(conversationId, message.toMap());
       await _firestoreService.updateConversationLastMessage(
-        conversationId, 
-        text.trim(), 
-        timestamp
+        conversationId,
+        text.trim(),
+        timestamp,
       );
       _scrollToBottom();
     } catch (e) {
       debugPrint('Error sending message: $e');
+    }
+  }
+
+  Future<void> toggleReaction(String messageId, String emoji) async {
+    final uid = _currentUserId;
+    if (uid == null) return;
+
+    try {
+      // We need to read the current reactions for this message to toggle properly
+      final msgDoc = await FirebaseFirestore.instance
+          .collection(FirestorePaths.conversations)
+          .doc(conversationId)
+          .collection(FirestorePaths.messages)
+          .doc(messageId)
+          .get();
+
+      if (!msgDoc.exists) return;
+
+      final reactions = Map<String, String>.from(
+        msgDoc.data()?['reactions'] ?? {},
+      );
+      final currentReaction = reactions[uid];
+
+      if (currentReaction == emoji) {
+        // Remove reaction
+        await _firestoreService.updateMessageReaction(
+          conversationId,
+          messageId,
+          uid,
+          null,
+        );
+      } else {
+        // Add or change reaction
+        await _firestoreService.updateMessageReaction(
+          conversationId,
+          messageId,
+          uid,
+          emoji,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error toggling reaction: $e');
     }
   }
 

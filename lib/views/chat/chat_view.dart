@@ -71,10 +71,15 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                   padding: const EdgeInsets.only(top: 16),
                   itemCount: docs.length,
                   itemBuilder: (context, index) {
-                    final data = docs[index].data() as Map<String, dynamic>;
+                    final doc = docs[index];
+                    final data = doc.data() as Map<String, dynamic>;
                     final isMine = data['senderId'] == uid;
                     
-                    return MessageBubble(data: data, isMine: isMine);
+                    return MessageBubble(
+                      messageId: doc.id,
+                      data: data,
+                      isMine: isMine,
+                    );
                   },
                 );
               },

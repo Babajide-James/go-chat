@@ -81,4 +81,23 @@ class FirestoreService {
       'typing.$uid': isTyping ? FieldValue.serverTimestamp() : FieldValue.delete(),
     });
   }
+
+  Future<void> updateMessageReaction(
+      String conversationId, String messageId, String uid, String? emoji) {
+    final ref = _firestore
+        .collection(FirestorePaths.conversations)
+        .doc(conversationId)
+        .collection(FirestorePaths.messages)
+        .doc(messageId);
+
+    if (emoji == null) {
+      return ref.update({
+        'reactions.$uid': FieldValue.delete(),
+      });
+    } else {
+      return ref.update({
+        'reactions.$uid': emoji,
+      });
+    }
+  }
 }
