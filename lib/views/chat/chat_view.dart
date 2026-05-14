@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
-import '../../viewmodels/chat_viewmodel.dart';
+import '../../viewmodels/chat_viewmodel.dart'; // also exports CompressionResult
 import '../../core/widgets/loading_indicator.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/theme/app_theme.dart';
@@ -10,6 +10,8 @@ import 'widgets/message_bubble.dart';
 import 'widgets/typing_indicator.dart';
 import 'widgets/audio_recorder_bar.dart';
 import 'widgets/audio_bubble.dart';
+import 'widgets/media_bubble.dart';
+import 'widgets/media_picker_sheet.dart';
 
 class ChatView extends StatelessWidget {
   final String conversationId;
@@ -34,6 +36,7 @@ class _ChatViewContent extends StatefulWidget {
 class _ChatViewContentState extends State<_ChatViewContent> {
   final _textController = TextEditingController();
   bool _showRecorder = false;
+  CompressionResult? _lastShownCompression;
 
   @override
   void dispose() {
@@ -41,10 +44,73 @@ class _ChatViewContentState extends State<_ChatViewContent> {
     super.dispose();
   }
 
+  void _maybeShowCompressionSnackbar(ChatViewModel vm) {
+    final result = vm.lastCompression;
+    if (result == null || result == _lastShownCompression) return;
+    _lastShownCompression = result;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 4),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          content: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppTheme.darkOrange, AppTheme.primaryOrange],
+              ),
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.primaryOrange.withOpacity(0.35),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.compress_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Compressed & Sent!',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                      Text(
+                        result.summary,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    });
+ }
+
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     final chatViewModel = context.watch<ChatViewModel>();
+    _maybeShowCompressionSnackbar(chatViewModel);
 
     return Scaffold(
       appBar: AppBar(title: Text(chatViewModel.conversationId)),
@@ -90,6 +156,23 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                           child: AudioBubble(
                             audioUrl: data['mediaUrl'] ?? '',
                             durationSeconds: data['duration'] as int? ?? 0,
+                            isMine: isMine,
+                          ),
+                        ),
+                      );
+                    }
+
+                    if (type == 'image' || type == 'video') {
+                      return Align(
+                        alignment: isMine
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 4, horizontal: 16),
+                          child: MediaBubble(
+                            mediaUrl: data['mediaUrl'] ?? '',
+                            type: type,
                             isMine: isMine,
                           ),
                         ),
@@ -159,6 +242,18 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                     ),
                     child: Row(
                       children: [
+                        // Attachment button
+                        IconButton(
+                          icon: const Icon(Icons.attach_file_rounded,
+                              color: AppTheme.primaryOrange),
+                          onPressed: () async {
+                            final result = await showMediaPickerSheet(context);
+                            if (result != null) {
+                              chatViewModel.sendMediaMessage(
+                                  result.file, result.type);
+                            }
+                          },
+                        ),
                         // Mic button
                         IconButton(
                           icon: const Icon(Icons.mic,

@@ -6,9 +6,32 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../core/services/firestore_service.dart';
 import '../core/services/storage_service.dart';
 import '../core/constants/firestore_paths.dart';
+import '../core/utils/media_compressor.dart';
 import '../core/enums/message_type.dart';
 import '../core/enums/message_status.dart';
 import '../models/message.dart';
+
+/// Holds before/after compression stats for the UI to display.
+class CompressionResult {
+  final double originalMb;
+  final double compressedMb;
+  final String type;
+
+  CompressionResult({
+    required this.originalMb,
+    required this.compressedMb,
+    required this.type,
+  });
+
+  double get savingsPercent =>
+      ((originalMb - compressedMb) / originalMb * 100).clamp(0, 100);
+
+  String get summary =>
+      '${type == "image" ? "📷" : "🎬"} '
+      '${originalMb.toStringAsFixed(2)} MB → '
+      '${compressedMb.toStringAsFixed(2)} MB '
+      '(${savingsPercent.toStringAsFixed(0)}% smaller)';
+}
 
 class ChatViewModel extends ChangeNotifier {
   final String conversationId;
@@ -21,6 +44,11 @@ class ChatViewModel extends ChangeNotifier {
   Timer? _idleTimer;
 
   bool _isTyping = false;
+  double? _mediaUploadProgress;
+  CompressionResult? _lastCompression;
+
+  double? get mediaUploadProgress => _mediaUploadProgress;
+  CompressionResult? get lastCompression => _lastCompression;
 
   ChatViewModel(this.conversationId) {
     // Optional: could initialize listeners here if needed
@@ -131,6 +159,74 @@ class ChatViewModel extends ChangeNotifier {
       _scrollToBottom();
     } catch (e) {
       debugPrint('Error sending audio: $e');
+    }
+  }
+
+  Future<void> sendMediaMessage(File file, String type) async {
+    final uid = _currentUserId;
+    if (uid == null) return;
+
+    _mediaUploadProgress = 0.0;
+    notifyListeners();
+
+    try {
+      // Measure original size
+      final originalBytes = await file.length();
+      final originalMb = originalBytes / (1024 * 1024);
+
+      // Compress before upload
+      File compressed;
+      if (type == 'image') {
+        compressed = await MediaCompressor.compressImage(file);
+      } else {
+        compressed = await MediaCompressor.compressVideo(file);
+      }
+
+      // Measure compressed size and expose to UI
+      final compressedBytes = await compressed.length();
+      final compressedMb = compressedBytes / (1024 * 1024);
+      _lastCompression = CompressionResult(
+        originalMb: originalMb,
+        compressedMb: compressedMb,
+        type: type,
+      );
+      notifyListeners();
+
+      final url = await StorageService().uploadMedia(
+        compressed,
+        type == 'image' ? 'images' : 'videos',
+        onProgress: (p) {
+          _mediaUploadProgress = p;
+          notifyListeners();
+        },
+      );
+
+      final cleanUrl = StorageService.cleanUrl(url);
+      final timestamp = Timestamp.now();
+      final preview = type == 'image' ? '📷 Photo' : '🎬 Video';
+
+      final message = Message(
+        id: '',
+        senderId: uid,
+        type: type == 'image' ? MessageType.image : MessageType.video,
+        mediaUrl: cleanUrl,
+        reactions: {},
+        status: MessageStatus.sent,
+        readBy: {},
+        deletedFor: [],
+        deletedForEveryone: false,
+        createdAt: timestamp,
+      );
+
+      await _firestoreService.sendMessage(conversationId, message.toMap());
+      await _firestoreService.updateConversationLastMessage(
+          conversationId, preview, timestamp);
+      _scrollToBottom();
+    } catch (e) {
+      debugPrint('Error sending media: $e');
+    } finally {
+      _mediaUploadProgress = null;
+      notifyListeners();
     }
   }
 
