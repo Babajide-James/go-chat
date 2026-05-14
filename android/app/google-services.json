@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "404996861820",
+    "project_id": "go-chat-387ac",
+    "storage_bucket": "go-chat-387ac.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:404996861820:android:68513a3265136f3deabef9",
+        "android_client_info": {
+          "package_name": "dev.logickoder.go_chat"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "404996861820-l5r68fbog2buls664fh14eglocuv2tt9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCh7zNES-WtQiTFvINNjmGn6ErR8E67YyQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "404996861820-l5r68fbog2buls664fh14eglocuv2tt9.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

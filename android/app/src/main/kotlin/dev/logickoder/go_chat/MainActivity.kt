@@ -1,4 +1,4 @@
-package dev.logickoder.flutter_chat_starter
+package dev.logickoder.go_chat
 
 import io.flutter.embedding.android.FlutterActivity
 
