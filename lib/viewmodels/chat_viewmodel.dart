@@ -60,8 +60,37 @@ class ChatViewModel extends ChangeNotifier {
   String? get editingMessageId => _editingMessageId;
   String? get editingMessageText => _editingMessageText;
 
+  String _partnerName = 'Chat';
+  String get partnerName => _partnerName;
+
   ChatViewModel(this.conversationId) {
-    // Optional: could initialize listeners here if needed
+    _resolvePartnerName();
+  }
+
+  /// Fetches conversation doc → finds partner UID → fetches their displayName.
+  Future<void> _resolvePartnerName() async {
+    try {
+      final convoDoc = await FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(conversationId)
+          .get();
+      if (!convoDoc.exists) return;
+      final participants =
+          List<String>.from(convoDoc.data()?['participants'] ?? []);
+      final partnerId =
+          participants.firstWhere((p) => p != _currentUserId, orElse: () => '');
+      if (partnerId.isEmpty) return;
+
+      final userDoc = await _firestoreService.getUser(partnerId);
+      if (userDoc.exists) {
+        final data = userDoc.data() as Map<String, dynamic>?;
+        final name = data?['displayName'] as String? ?? data?['email'] as String? ?? 'Chat';
+        _partnerName = name;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Error resolving partner name: $e');
+    }
   }
 
   Stream<QuerySnapshot> get messagesStream {

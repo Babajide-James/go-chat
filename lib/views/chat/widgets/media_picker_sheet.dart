@@ -140,7 +140,7 @@ class _PickerOption extends StatelessWidget {
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
+              color: color.withValues(alpha: 0.12 * 255),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, color: color, size: 28),
@@ -151,7 +151,7 @@ class _PickerOption extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: AppTheme.textDark.withOpacity(0.8),
+              color: AppTheme.textDark.withValues(alpha: 0.8 * 255),
             ),
           ),
         ],

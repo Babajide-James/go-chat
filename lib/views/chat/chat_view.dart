@@ -67,7 +67,7 @@ class _ChatViewContentState extends State<_ChatViewContent> {
               borderRadius: BorderRadius.circular(14),
               boxShadow: [
                 BoxShadow(
-                  color: AppTheme.primaryOrange.withOpacity(0.35),
+                  color: AppTheme.primaryOrange.withValues(alpha: 0.35 * 255),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -166,7 +166,7 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                 cursorColor: Colors.white,
                 onChanged: chatViewModel.setSearchQuery,
               )
-            : Text(chatViewModel.conversationId),
+            : Text(chatViewModel.partnerName),
         actions: [
           IconButton(
             icon: Icon(
@@ -456,8 +456,10 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                         ),
                       ],
                     ),
-                  ),
+                  ],
                 ),
+              ),
+            ),
         ],
       ),
     );

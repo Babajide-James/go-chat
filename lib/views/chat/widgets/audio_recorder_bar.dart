@@ -103,7 +103,7 @@ class _AudioRecorderBarState extends State<AudioRecorderBar> {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: AppTheme.textDark.withOpacity(0.05),
+            color: AppTheme.textDark.withValues(alpha: 0.05 * 255),
             blurRadius: 10,
             offset: const Offset(0, -2),
           ),

@@ -56,7 +56,7 @@ class MediaBubble extends StatelessWidget {
           borderRadius: borderRadius,
           boxShadow: [
             BoxShadow(
-              color: AppTheme.textDark.withOpacity(0.08),
+              color: AppTheme.textDark.withValues(alpha: 0.08 * 255),
               blurRadius: 8,
               offset: const Offset(0, 3),
             ),
@@ -91,7 +91,7 @@ class MediaBubble extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.45),
+                      color: Colors.black.withValues(alpha: 0.45 * 255),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(Icons.play_arrow_rounded,
@@ -101,7 +101,7 @@ class MediaBubble extends StatelessWidget {
               // Upload progress overlay
               if (uploadProgress != null)
                 Container(
-                  color: Colors.black.withOpacity(0.45),
+                  color: Colors.black.withValues(alpha: 0.45 * 255),
                   child: Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,

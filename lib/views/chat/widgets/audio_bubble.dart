@@ -98,7 +98,7 @@ class _AudioBubbleState extends State<AudioBubble> {
     final iconColor = widget.isMine ? Colors.white : AppTheme.primaryOrange;
     final textColor = widget.isMine ? Colors.white : AppTheme.textDark;
     final trackColor = widget.isMine
-        ? Colors.white.withOpacity(0.4)
+        ? Colors.white.withValues(alpha: 0.4 * 255)
         : AppTheme.lightPeach;
     final activeTrackColor = widget.isMine ? Colors.white : AppTheme.darkOrange;
 
@@ -109,7 +109,7 @@ class _AudioBubbleState extends State<AudioBubble> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.textDark.withOpacity(0.06),
+            color: AppTheme.textDark.withValues(alpha: 0.06 * 255),
             blurRadius: 5,
             offset: const Offset(0, 2),
           ),
@@ -161,7 +161,7 @@ class _AudioBubbleState extends State<AudioBubble> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: iconColor.withOpacity(0.15),
+                          color: iconColor.withValues(alpha: 0.15 * 255),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
