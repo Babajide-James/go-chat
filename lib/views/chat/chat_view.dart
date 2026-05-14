@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
-import '../../viewmodels/chat_viewmodel.dart'; // also exports CompressionResult
+import 'package:visibility_detector/visibility_detector.dart';
+import '../../viewmodels/chat_viewmodel.dart';
 import '../../core/widgets/loading_indicator.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/theme/app_theme.dart';
@@ -106,6 +107,28 @@ class _ChatViewContentState extends State<_ChatViewContent> {
     });
  }
 
+  Widget _buildReadReceipt(String status, Map<String, dynamic> readBy) {
+    IconData iconData;
+    Color iconColor;
+
+    if (status == 'seen' || readBy.isNotEmpty) {
+      iconData = Icons.done_all_rounded;
+      iconColor = Colors.blue.shade300;
+    } else if (status == 'delivered') {
+      iconData = Icons.done_all_rounded;
+      iconColor = Colors.grey;
+    } else {
+      iconData = Icons.check_rounded;
+      iconColor = Colors.grey;
+    }
+
+    return Icon(
+      iconData,
+      size: 14,
+      color: iconColor,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -145,44 +168,76 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                     final isMine = data['senderId'] == uid;
                     final type = data['type'] as String? ?? 'text';
 
+                    Widget content;
+
                     if (type == 'audio') {
-                      return Align(
+                      content = Align(
                         alignment: isMine
                             ? Alignment.centerRight
                             : Alignment.centerLeft,
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
                               vertical: 4, horizontal: 16),
-                          child: AudioBubble(
-                            audioUrl: data['mediaUrl'] ?? '',
-                            durationSeconds: data['duration'] as int? ?? 0,
-                            isMine: isMine,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              AudioBubble(
+                                audioUrl: data['mediaUrl'] ?? '',
+                                durationSeconds: data['duration'] as int? ?? 0,
+                                isMine: isMine,
+                              ),
+                              if (isMine) ...[
+                                const SizedBox(height: 2),
+                                _buildReadReceipt(
+                                    data['status'] as String? ?? 'sent',
+                                    data['readBy'] as Map<String, dynamic>? ?? {}),
+                              ]
+                            ],
                           ),
                         ),
                       );
-                    }
-
-                    if (type == 'image' || type == 'video') {
-                      return Align(
+                    } else if (type == 'image' || type == 'video') {
+                      content = Align(
                         alignment: isMine
                             ? Alignment.centerRight
                             : Alignment.centerLeft,
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
                               vertical: 4, horizontal: 16),
-                          child: MediaBubble(
-                            mediaUrl: data['mediaUrl'] ?? '',
-                            type: type,
-                            isMine: isMine,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              MediaBubble(
+                                mediaUrl: data['mediaUrl'] ?? '',
+                                type: type,
+                                isMine: isMine,
+                              ),
+                              if (isMine) ...[
+                                const SizedBox(height: 4),
+                                _buildReadReceipt(
+                                    data['status'] as String? ?? 'sent',
+                                    data['readBy'] as Map<String, dynamic>? ?? {}),
+                              ]
+                            ],
                           ),
                         ),
                       );
+                    } else {
+                      content = MessageBubble(
+                        messageId: doc.id,
+                        data: data,
+                        isMine: isMine,
+                      );
                     }
 
-                    return MessageBubble(
-                      messageId: doc.id,
-                      data: data,
-                      isMine: isMine,
+                    return VisibilityDetector(
+                      key: Key(doc.id),
+                      onVisibilityChanged: (info) {
+                        if (!isMine && info.visibleFraction > 0.5) {
+                          chatViewModel.markAsRead(doc.id, data);
+                        }
+                      },
+                      child: content,
                     );
                   },
                 );

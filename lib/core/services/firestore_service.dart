@@ -107,4 +107,17 @@ class FirestoreService {
       });
     }
   }
+
+  Future<void> markMessageAsRead(
+      String conversationId, String messageId, String uid) {
+    return _firestore
+        .collection(FirestorePaths.conversations)
+        .doc(conversationId)
+        .collection(FirestorePaths.messages)
+        .doc(messageId)
+        .update({
+      'readBy.$uid': FieldValue.serverTimestamp(),
+      'status': 'seen', // Simplifying status logic; effectively 'seen' when any recipient reads it
+    });
+  }
 }

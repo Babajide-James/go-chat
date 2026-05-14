@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../viewmodels/chat_viewmodel.dart';
 import 'reaction_picker.dart';
@@ -28,13 +29,20 @@ class MessageBubble extends StatelessWidget {
       reactionCounts[e] = (reactionCounts[e] ?? 0) + 1;
     }
 
-    return Align(
-      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-      child: GestureDetector(
-        onLongPress: () {
-          _showReactionPicker(context, chatViewModel);
-        },
-        child: Stack(
+    return VisibilityDetector(
+      key: Key(messageId),
+      onVisibilityChanged: (info) {
+        if (!isMine && info.visibleFraction > 0.5) {
+          chatViewModel.markAsRead(messageId, data);
+        }
+      },
+      child: Align(
+        alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+        child: GestureDetector(
+          onLongPress: () {
+            _showReactionPicker(context, chatViewModel);
+          },
+          child: Stack(
           clipBehavior: Clip.none,
           children: [
             Container(
@@ -56,12 +64,24 @@ class MessageBubble extends StatelessWidget {
                   ),
                 ],
               ),
-              child: Text(
-                data['text'] ?? '',
-                style: TextStyle(
-                  color: isMine ? Colors.white : AppTheme.textDark,
-                  fontSize: 16,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Flexible(
+                    child: Text(
+                      data['text'] ?? '',
+                      style: TextStyle(
+                        color: isMine ? Colors.white : AppTheme.textDark,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  if (isMine) ...[
+                    const SizedBox(width: 8),
+                    _buildReadReceipt(data['status'] as String? ?? 'sent', data['readBy'] as Map<String, dynamic>? ?? {}),
+                  ],
+                ],
               ),
             ),
             if (reactionCounts.isNotEmpty)
@@ -74,6 +94,28 @@ class MessageBubble extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildReadReceipt(String status, Map<String, dynamic> readBy) {
+    IconData iconData;
+    Color iconColor;
+
+    if (status == 'seen' || readBy.isNotEmpty) {
+      iconData = Icons.done_all_rounded;
+      iconColor = Colors.blue.shade300;
+    } else if (status == 'delivered') {
+      iconData = Icons.done_all_rounded;
+      iconColor = Colors.white70;
+    } else {
+      iconData = Icons.check_rounded;
+      iconColor = Colors.white70;
+    }
+
+    return Icon(
+      iconData,
+      size: 16,
+      color: iconColor,
     );
   }
 

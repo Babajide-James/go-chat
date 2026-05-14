@@ -31,7 +31,7 @@ class MediaCompressor {
   static Future<File> compressVideo(File file) async {
     final info = await VideoCompress.compressVideo(
       file.path,
-      quality: VideoQuality.Res720hQuality,
+      quality: VideoQuality.DefaultQuality,
       deleteOrigin: false,
       includeAudio: true,
     );

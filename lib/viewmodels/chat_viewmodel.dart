@@ -272,6 +272,23 @@ class ChatViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> markAsRead(String messageId, Map<String, dynamic> data) async {
+    final uid = _currentUserId;
+    if (uid == null) return;
+
+    final senderId = data['senderId'] as String?;
+    if (senderId == uid) return; // Don't mark our own messages as read
+
+    final readBy = Map<String, dynamic>.from(data['readBy'] ?? {});
+    if (readBy.containsKey(uid)) return; // Already marked as read by us
+
+    try {
+      await _firestoreService.markMessageAsRead(conversationId, messageId, uid);
+    } catch (e) {
+      debugPrint('Error marking as read: $e');
+    }
+  }
+
   void _scrollToBottom() {
     if (scrollController.hasClients) {
       scrollController.animateTo(
