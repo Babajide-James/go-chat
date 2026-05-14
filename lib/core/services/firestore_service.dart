@@ -9,12 +9,19 @@ class FirestoreService {
     return _firestore.collection(FirestorePaths.users).doc(uid).get();
   }
 
-  Future<QuerySnapshot> searchUsers(String query) {
-    // Simple prefix search on displayName
+  Future<QuerySnapshot> searchUsersByDisplayName(String query) {
     return _firestore
         .collection(FirestorePaths.users)
         .where('displayName', isGreaterThanOrEqualTo: query)
-        .where('displayName', isLessThanOrEqualTo: query + '\uf8ff')
+        .where('displayName', isLessThanOrEqualTo: '$query\uf8ff')
+        .limit(20)
+        .get();
+  }
+
+  Future<QuerySnapshot> searchUsersByEmail(String query) {
+    return _firestore
+        .collection(FirestorePaths.users)
+        .where('email', isEqualTo: query.toLowerCase().trim())
         .limit(20)
         .get();
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/firestore_service.dart';
 import '../../viewmodels/chat_list_viewmodel.dart';
@@ -21,26 +22,55 @@ class _NewChatSearchViewState extends State<NewChatSearchView> {
   
   List<DocumentSnapshot> _searchResults = [];
   bool _isLoading = false;
+  String? _errorMessage;
+  String? _currentUserId;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentUserId = FirebaseAuth.instance.currentUser?.uid;
+  }
 
   void _performSearch(String query) async {
-    if (query.trim().isEmpty) {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
       setState(() {
         _searchResults = [];
+        _errorMessage = null;
       });
       return;
     }
 
     setState(() {
       _isLoading = true;
+      _errorMessage = null;
     });
 
     try {
-      final results = await _firestoreService.searchUsers(query.trim());
+      // Run both queries in parallel
+      final results = await Future.wait([
+        _firestoreService.searchUsersByDisplayName(trimmed),
+        _firestoreService.searchUsersByEmail(trimmed),
+      ]);
+
+      // Merge results, deduplicate by UID, exclude self
+      final Map<String, DocumentSnapshot> seen = {};
+      for (final snapshot in results) {
+        for (final doc in snapshot.docs) {
+          if (doc.id != _currentUserId) {
+            seen[doc.id] = doc;
+          }
+        }
+      }
+
       setState(() {
-        _searchResults = results.docs;
+        _searchResults = seen.values.toList();
       });
     } catch (e) {
       debugPrint('Search error: $e');
+      setState(() {
+        _errorMessage = 'Search failed. Check your internet connection.';
+      });
     } finally {
       setState(() {
         _isLoading = false;
@@ -85,12 +115,24 @@ class _NewChatSearchViewState extends State<NewChatSearchView> {
           Expanded(
             child: _isLoading
                 ? const LoadingIndicator()
-                : _searchResults.isEmpty
-                    ? const EmptyState(
-                        icon: Icons.search,
-                        title: 'No users found',
-                        message: 'Try a different search term.',
+                : _errorMessage != null
+                    ? EmptyState(
+                        icon: Icons.error_outline,
+                        title: 'Error',
+                        message: _errorMessage!,
                       )
+                    : _searchResults.isEmpty && _searchController.text.isNotEmpty
+                        ? const EmptyState(
+                            icon: Icons.person_search,
+                            title: 'No users found',
+                            message: 'Try their display name or full email address.',
+                          )
+                        : _searchResults.isEmpty
+                            ? const EmptyState(
+                                icon: Icons.search,
+                                title: 'Find someone',
+                                message: 'Search by display name or email address.',
+                              )
                     : ListView.builder(
                         itemCount: _searchResults.length,
                         itemBuilder: (context, index) {
