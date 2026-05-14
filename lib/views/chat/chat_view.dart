@@ -8,6 +8,8 @@ import '../../core/widgets/empty_state.dart';
 import '../../core/theme/app_theme.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/typing_indicator.dart';
+import 'widgets/audio_recorder_bar.dart';
+import 'widgets/audio_bubble.dart';
 
 class ChatView extends StatelessWidget {
   final String conversationId;
@@ -31,6 +33,7 @@ class _ChatViewContent extends StatefulWidget {
 
 class _ChatViewContentState extends State<_ChatViewContent> {
   final _textController = TextEditingController();
+  bool _showRecorder = false;
 
   @override
   void dispose() {
@@ -74,7 +77,25 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                     final doc = docs[index];
                     final data = doc.data() as Map<String, dynamic>;
                     final isMine = data['senderId'] == uid;
-                    
+                    final type = data['type'] as String? ?? 'text';
+
+                    if (type == 'audio') {
+                      return Align(
+                        alignment: isMine
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 4, horizontal: 16),
+                          child: AudioBubble(
+                            audioUrl: data['mediaUrl'] ?? '',
+                            durationSeconds: data['duration'] as int? ?? 0,
+                            isMine: isMine,
+                          ),
+                        ),
+                      );
+                    }
+
                     return MessageBubble(
                       messageId: doc.id,
                       data: data,
@@ -114,52 +135,70 @@ class _ChatViewContentState extends State<_ChatViewContent> {
               );
             },
           ),
-          SafeArea(
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.textDark.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      decoration: const InputDecoration(
-                        hintText: 'Type a message...',
-                        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      ),
-                      textCapitalization: TextCapitalization.sentences,
-                      onChanged: chatViewModel.onTextChanged,
+          // Input bar / recorder swap
+          _showRecorder
+              ? AudioRecorderBar(
+                  onRecordingComplete: (path, seconds) {
+                    setState(() => _showRecorder = false);
+                    chatViewModel.sendAudioMessage(path, seconds);
+                  },
+                  onCancel: () => setState(() => _showRecorder = false),
+                )
+              : SafeArea(
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.textDark.withOpacity(0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, -2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        // Mic button
+                        IconButton(
+                          icon: const Icon(Icons.mic,
+                              color: AppTheme.primaryOrange),
+                          onPressed: () =>
+                              setState(() => _showRecorder = true),
+                        ),
+                        Expanded(
+                          child: TextField(
+                            controller: _textController,
+                            decoration: const InputDecoration(
+                              hintText: 'Type a message...',
+                              contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 12),
+                            ),
+                            textCapitalization: TextCapitalization.sentences,
+                            onChanged: chatViewModel.onTextChanged,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          decoration: const BoxDecoration(
+                            color: AppTheme.primaryOrange,
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            icon: const Icon(Icons.send, color: Colors.white),
+                            onPressed: () {
+                              if (_textController.text.trim().isNotEmpty) {
+                                chatViewModel
+                                    .sendTextMessage(_textController.text);
+                                _textController.clear();
+                              }
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Container(
-                    decoration: const BoxDecoration(
-                      color: AppTheme.primaryOrange,
-                      shape: BoxShape.circle,
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.send, color: Colors.white),
-                      onPressed: () {
-                        if (_textController.text.trim().isNotEmpty) {
-                          chatViewModel.sendTextMessage(_textController.text);
-                          _textController.clear();
-                        }
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+                ),
         ],
       ),
     );

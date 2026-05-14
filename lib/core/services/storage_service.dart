@@ -24,4 +24,7 @@ class StorageService {
       throw Exception('Failed to upload file to Supabase: $e');
     }
   }
+
+  /// Convenience wrapper for audio uploads
+  Future<String> uploadAudio(File file) => uploadFile(file, 'audio');
 }

@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Audio recording permission for voice messages -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <application
         android:label="Go Chat"
         android:name="${applicationName}"

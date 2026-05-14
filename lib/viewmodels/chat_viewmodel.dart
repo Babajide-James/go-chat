@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../core/services/firestore_service.dart';
+import '../core/services/storage_service.dart';
 import '../core/constants/firestore_paths.dart';
 import '../core/enums/message_type.dart';
 import '../core/enums/message_status.dart';
@@ -99,6 +101,36 @@ class ChatViewModel extends ChangeNotifier {
       _scrollToBottom();
     } catch (e) {
       debugPrint('Error sending message: $e');
+    }
+  }
+
+  Future<void> sendAudioMessage(String filePath, int durationSeconds) async {
+    final uid = _currentUserId;
+    if (uid == null) return;
+
+    try {
+      final file = File(filePath);
+      final url = await StorageService().uploadAudio(file);
+      final timestamp = Timestamp.now();
+      final message = Message(
+        id: '',
+        senderId: uid,
+        type: MessageType.audio,
+        mediaUrl: url,
+        duration: durationSeconds,
+        reactions: {},
+        status: MessageStatus.sent,
+        readBy: {},
+        deletedFor: [],
+        deletedForEveryone: false,
+        createdAt: timestamp,
+      );
+      await _firestoreService.sendMessage(conversationId, message.toMap());
+      await _firestoreService.updateConversationLastMessage(
+          conversationId, '🎤 Voice message', timestamp);
+      _scrollToBottom();
+    } catch (e) {
+      debugPrint('Error sending audio: $e');
     }
   }
 
