@@ -61,6 +61,23 @@ class ChatViewModel extends ChangeNotifier {
   String? get editingMessageText => _editingMessageText;
   String? get currentUserId => _currentUserId;
 
+  File? _pendingMediaFile;
+  String? _pendingMediaType;
+  File? get pendingMediaFile => _pendingMediaFile;
+  String? get pendingMediaType => _pendingMediaType;
+
+  void setPendingMedia(File file, String type) {
+    _pendingMediaFile = file;
+    _pendingMediaType = type;
+    notifyListeners();
+  }
+
+  void clearPendingMedia() {
+    _pendingMediaFile = null;
+    _pendingMediaType = null;
+    notifyListeners();
+  }
+
   String _partnerName = 'Chat';
   String get partnerName => _partnerName;
 

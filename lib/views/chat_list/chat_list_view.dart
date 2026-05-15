@@ -23,8 +23,14 @@ class ChatListView extends StatelessWidget {
       backgroundColor: AppTheme.softWhite,
       appBar: AppBar(
         title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [Image.asset('assets/images/go_logo.png', height: 30)],
+          // mainAxisSize: MainAxisSize.min,
+          // mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Image.asset('assets/images/go_logo.png', height: 30),
+            Center(
+              child: Text('Welcome to Go Chat', style: TextStyle(fontSize: 16)),
+            ),
+          ],
         ),
         actions: [
           IconButton(
@@ -34,17 +40,12 @@ class ChatListView extends StatelessWidget {
           ),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: chatListViewModel.conversationsStream,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+      body: Builder(
+        builder: (context) {
+          if (chatListViewModel.isLoading) {
             return const LoadingIndicator();
           }
-          if (snapshot.hasError) {
-            return const Center(child: Text('An error occurred.'));
-          }
-
-          final docs = snapshot.data?.docs ?? [];
+          final docs = chatListViewModel.conversations;
 
           if (docs.isEmpty) {
             return const EmptyState(
@@ -58,8 +59,8 @@ class ChatListView extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 88),
             itemCount: docs.length,
             itemBuilder: (context, index) {
-              final doc = docs[index];
-              final data = doc.data() as Map<String, dynamic>;
+              final data = docs[index];
+              final docId = data['id'] as String;
 
               final participants = List<String>.from(
                 data['participants'] ?? [],
@@ -69,12 +70,19 @@ class ChatListView extends StatelessWidget {
                   ? participants.first
                   : null;
               final lastMessage = data['lastMessage'] as String? ?? 'New Chat';
-              final lastMessageAt = data['lastMessageAt'] as Timestamp?;
+              
+              Timestamp? lastMessageAt;
+              if (data['lastMessageAt'] is String) {
+                lastMessageAt = Timestamp.fromDate(DateTime.parse(data['lastMessageAt']));
+              } else if (data['lastMessageAt'] is Timestamp) {
+                lastMessageAt = data['lastMessageAt'];
+              }
 
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: _ConversationTile(
-                  conversationId: doc.id,
+                  key: ValueKey(docId),
+                  conversationId: docId,
                   partnerId: partnerId,
                   lastMessage: lastMessage,
                   lastMessageAt: lastMessageAt,
@@ -103,9 +111,12 @@ class ChatListView extends StatelessWidget {
   bool _hasActivePartnerTyping(Map<String, dynamic> data, String? myUid) {
     final typing = data['typing'] as Map<String, dynamic>? ?? {};
     for (final entry in typing.entries) {
-      final typedAt = entry.value is Timestamp
-          ? (entry.value as Timestamp).toDate()
-          : null;
+      DateTime? typedAt;
+      if (entry.value is Timestamp) {
+        typedAt = (entry.value as Timestamp).toDate();
+      } else if (entry.value is String) {
+        typedAt = DateTime.tryParse(entry.value);
+      }
       final isRecent =
           typedAt != null && DateTime.now().difference(typedAt).inSeconds < 6;
       if (entry.key != myUid && isRecent) return true;
@@ -123,6 +134,7 @@ class _ConversationTile extends StatefulWidget {
   final bool isTyping;
 
   const _ConversationTile({
+    super.key,
     required this.conversationId,
     required this.partnerId,
     required this.lastMessage,

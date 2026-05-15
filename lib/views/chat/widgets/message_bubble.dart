@@ -197,14 +197,18 @@ class MessageBubble extends StatelessWidget {
   }
 
   void _showActionsSheet(BuildContext context) {
+    final chatViewModel = context.read<ChatViewModel>();
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => MessageActionsSheet(
-        messageId: messageId,
-        data: data,
-        isMine: isMine,
+      builder: (sheetContext) => ChangeNotifierProvider.value(
+        value: chatViewModel,
+        child: MessageActionsSheet(
+          messageId: messageId,
+          data: data,
+          isMine: isMine,
+        ),
       ),
     );
   }

@@ -348,7 +348,7 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                       boxShadow: [
                         BoxShadow(
                           color: AppTheme.textDark.withValues(
-                            alpha: 0.05 * 255,
+                            alpha: 0.05,
                           ),
                           blurRadius: 10,
                           offset: const Offset(0, -2),
@@ -414,6 +414,56 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                               ],
                             ),
                           ),
+                        if (chatViewModel.pendingMediaFile != null)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppTheme.lightPeach,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: chatViewModel.pendingMediaType == 'image'
+                                      ? Image.file(
+                                          chatViewModel.pendingMediaFile!,
+                                          width: 40,
+                                          height: 40,
+                                          fit: BoxFit.cover,
+                                        )
+                                      : Container(
+                                          width: 40,
+                                          height: 40,
+                                          color: Colors.black87,
+                                          child: const Icon(
+                                            Icons.videocam,
+                                            color: Colors.white,
+                                            size: 20,
+                                          ),
+                                        ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Attached ${chatViewModel.pendingMediaType == "image" ? "Image" : "Video"}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      color: AppTheme.textDark,
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.close, size: 20),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: chatViewModel.clearPendingMedia,
+                                ),
+                              ],
+                            ),
+                          ),
                         Row(
                           children: [
                             // Attachment button
@@ -427,7 +477,7 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                                   context,
                                 );
                                 if (result != null) {
-                                  chatViewModel.sendMediaMessage(
+                                  chatViewModel.setPendingMedia(
                                     result.file,
                                     result.type,
                                   );
@@ -470,6 +520,13 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                                   color: Colors.white,
                                 ),
                                 onPressed: () {
+                                  if (chatViewModel.pendingMediaFile != null) {
+                                    chatViewModel.sendMediaMessage(
+                                      chatViewModel.pendingMediaFile!,
+                                      chatViewModel.pendingMediaType!,
+                                    );
+                                    chatViewModel.clearPendingMedia();
+                                  }
                                   if (_textController.text.trim().isNotEmpty) {
                                     chatViewModel.sendTextMessage(
                                       _textController.text,
