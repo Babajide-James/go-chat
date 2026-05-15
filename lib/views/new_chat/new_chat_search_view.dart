@@ -19,7 +19,7 @@ class NewChatSearchView extends StatefulWidget {
 class _NewChatSearchViewState extends State<NewChatSearchView> {
   final _searchController = TextEditingController();
   final FirestoreService _firestoreService = FirestoreService();
-  
+
   List<DocumentSnapshot> _searchResults = [];
   bool _isLoading = false;
   String? _errorMessage;
@@ -47,19 +47,24 @@ class _NewChatSearchViewState extends State<NewChatSearchView> {
     });
 
     try {
-      // Run both queries in parallel
-      final results = await Future.wait([
-        _firestoreService.searchUsersByDisplayName(trimmed),
-        _firestoreService.searchUsersByEmail(trimmed),
-      ]);
+      final snapshot = await _firestoreService.getUsersForSearch();
+      final query = trimmed.toLowerCase();
+      final seen = <String, DocumentSnapshot>{};
 
-      // Merge results, deduplicate by UID, exclude self
-      final Map<String, DocumentSnapshot> seen = {};
-      for (final snapshot in results) {
-        for (final doc in snapshot.docs) {
-          if (doc.id != _currentUserId) {
-            seen[doc.id] = doc;
-          }
+      for (final doc in snapshot.docs) {
+        if (doc.id == _currentUserId) continue;
+
+        final data = doc.data() as Map<String, dynamic>;
+        final name = (data['displayName'] as String? ?? '').toLowerCase();
+        final email = (data['email'] as String? ?? '').toLowerCase();
+        final nameParts = name.split(RegExp(r'\s+'));
+        final matchesName =
+            name.contains(query) ||
+            nameParts.any((part) => part.startsWith(query));
+        final matchesEmail = email.contains(query);
+
+        if (matchesName || matchesEmail) {
+          seen[doc.id] = doc;
         }
       }
 
@@ -89,9 +94,7 @@ class _NewChatSearchViewState extends State<NewChatSearchView> {
     final chatListViewModel = context.read<ChatListViewModel>();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('New Chat'),
-      ),
+      appBar: AppBar(title: const Text('New Chat')),
       body: Column(
         children: [
           Padding(
@@ -99,8 +102,11 @@ class _NewChatSearchViewState extends State<NewChatSearchView> {
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Search by display name...',
-                prefixIcon: const Icon(Icons.search, color: AppTheme.primaryOrange),
+                hintText: 'Search by name or email...',
+                prefixIcon: const Icon(
+                  Icons.search,
+                  color: AppTheme.primaryOrange,
+                ),
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.clear),
                   onPressed: () {
@@ -116,54 +122,59 @@ class _NewChatSearchViewState extends State<NewChatSearchView> {
             child: _isLoading
                 ? const LoadingIndicator()
                 : _errorMessage != null
-                    ? EmptyState(
-                        icon: Icons.error_outline,
-                        title: 'Error',
-                        message: _errorMessage!,
-                      )
-                    : _searchResults.isEmpty && _searchController.text.isNotEmpty
-                        ? const EmptyState(
-                            icon: Icons.person_search,
-                            title: 'No users found',
-                            message: 'Try their display name or full email address.',
-                          )
-                        : _searchResults.isEmpty
-                            ? const EmptyState(
-                                icon: Icons.search,
-                                title: 'Find someone',
-                                message: 'Search by display name or email address.',
-                              )
-                    : ListView.builder(
-                        itemCount: _searchResults.length,
-                        itemBuilder: (context, index) {
-                          final userDoc = _searchResults[index];
-                          final userData = userDoc.data() as Map<String, dynamic>;
-                          
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: AppTheme.lightPeach,
-                              child: Text(
-                                (userData['displayName'] ?? '?')[0].toUpperCase(),
-                                style: const TextStyle(color: AppTheme.darkOrange),
+                ? EmptyState(
+                    icon: Icons.error_outline,
+                    title: 'Error',
+                    message: _errorMessage!,
+                  )
+                : _searchResults.isEmpty && _searchController.text.isNotEmpty
+                ? const EmptyState(
+                    icon: Icons.person_search,
+                    title: 'No users found',
+                    message: 'Try a name, surname initial, or email.',
+                  )
+                : _searchResults.isEmpty
+                ? const EmptyState(
+                    icon: Icons.search,
+                    title: 'Find someone',
+                    message: 'Search by display name or email address.',
+                  )
+                : ListView.builder(
+                    itemCount: _searchResults.length,
+                    itemBuilder: (context, index) {
+                      final userDoc = _searchResults[index];
+                      final userData = userDoc.data() as Map<String, dynamic>;
+                      final displayName =
+                          userData['displayName'] as String? ?? 'Unknown User';
+
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: AppTheme.lightPeach,
+                          child: Text(
+                            displayName.isNotEmpty
+                                ? displayName[0].toUpperCase()
+                                : '?',
+                            style: const TextStyle(color: AppTheme.darkOrange),
+                          ),
+                        ),
+                        title: Text(displayName),
+                        subtitle: Text(userData['email'] as String? ?? ''),
+                        onTap: () async {
+                          final convId = await chatListViewModel
+                              .createConversation(userDoc.id);
+                          if (convId != null && context.mounted) {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    ChatView(conversationId: convId),
                               ),
-                            ),
-                            title: Text(userData['displayName'] ?? 'Unknown User'),
-                            subtitle: Text(userData['email'] ?? ''),
-                            onTap: () async {
-                              // Create or find conversation
-                              final convId = await chatListViewModel.createConversation(userDoc.id);
-                              if (convId != null && mounted) {
-                                Navigator.pushReplacement(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => ChatView(conversationId: convId),
-                                  ),
-                                );
-                              }
-                            },
-                          );
+                            );
+                          }
                         },
-                      ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

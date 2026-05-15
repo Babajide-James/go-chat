@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import '../../viewmodels/chat_viewmodel.dart';
@@ -75,7 +74,11 @@ class _ChatViewContentState extends State<_ChatViewContent> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.compress_rounded, color: Colors.white, size: 20),
+                const Icon(
+                  Icons.compress_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -106,7 +109,7 @@ class _ChatViewContentState extends State<_ChatViewContent> {
         ),
       );
     });
- }
+  }
 
   Widget _buildReadReceipt(String status, Map readBy) {
     IconData iconData;
@@ -123,18 +126,14 @@ class _ChatViewContentState extends State<_ChatViewContent> {
       iconColor = Colors.grey;
     }
 
-    return Icon(
-      iconData,
-      size: 14,
-      color: iconColor,
-    );
+    return Icon(iconData, size: 14, color: iconColor);
   }
 
   @override
   Widget build(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
     final chatViewModel = context.watch<ChatViewModel>();
-    
+    final uid = chatViewModel.currentUserId;
+
     // Auto-populate text field when edit is tapped
     if (chatViewModel.editingMessageId != null &&
         chatViewModel.editingMessageId != _lastEditingMessageId) {
@@ -169,8 +168,7 @@ class _ChatViewContentState extends State<_ChatViewContent> {
             : Text(chatViewModel.partnerName),
         actions: [
           IconButton(
-            icon: Icon(
-                chatViewModel.isSearching ? Icons.close : Icons.search),
+            icon: Icon(chatViewModel.isSearching ? Icons.close : Icons.search),
             onPressed: chatViewModel.toggleSearch,
           ),
         ],
@@ -184,27 +182,18 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const LoadingIndicator();
                 }
-                
+
                 var docs = snapshot.data?.docs ?? [];
-                
+
                 // Filter out messages deleted for me
                 docs = docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
-                  final deletedFor = List<String>.from(data['deletedFor'] ?? []);
+                  final deletedFor = List<String>.from(
+                    data['deletedFor'] ?? [],
+                  );
                   return !deletedFor.contains(uid);
                 }).toList();
 
-                if (chatViewModel.searchQuery.isNotEmpty) {
-                  final query = chatViewModel.searchQuery.toLowerCase();
-                  docs = docs.where((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    final type = data['type'] as String? ?? 'text';
-                    if (type != 'text') return false;
-                    final text = data['text'] as String? ?? '';
-                    return text.toLowerCase().contains(query);
-                  }).toList();
-                }
-                
                 if (docs.isEmpty) {
                   return const EmptyState(
                     icon: Icons.message,
@@ -233,7 +222,9 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                             : Alignment.centerLeft,
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
-                              vertical: 4, horizontal: 16),
+                            vertical: 4,
+                            horizontal: 16,
+                          ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
@@ -245,9 +236,10 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                               if (isMine) ...[
                                 const SizedBox(height: 2),
                                 _buildReadReceipt(
-                                    data['status'] as String? ?? 'sent',
-                                    data['readBy'] as Map? ?? {}),
-                              ]
+                                  data['status'] as String? ?? 'sent',
+                                  data['readBy'] as Map? ?? {},
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -259,7 +251,9 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                             : Alignment.centerLeft,
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
-                              vertical: 4, horizontal: 16),
+                            vertical: 4,
+                            horizontal: 16,
+                          ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
@@ -271,9 +265,10 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                               if (isMine) ...[
                                 const SizedBox(height: 4),
                                 _buildReadReceipt(
-                                    data['status'] as String? ?? 'sent',
-                                    data['readBy'] as Map? ?? {}),
-                              ]
+                                  data['status'] as String? ?? 'sent',
+                                  data['readBy'] as Map? ?? {},
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -304,26 +299,32 @@ class _ChatViewContentState extends State<_ChatViewContent> {
           StreamBuilder<DocumentSnapshot>(
             stream: chatViewModel.conversationStream,
             builder: (context, snapshot) {
-              if (!snapshot.hasData || snapshot.data == null || !snapshot.data!.exists) {
+              if (!snapshot.hasData ||
+                  snapshot.data == null ||
+                  !snapshot.data!.exists) {
                 return const SizedBox.shrink();
               }
-              
+
               final data = snapshot.data!.data() as Map<String, dynamic>;
               final typingMap = data['typing'] as Map<String, dynamic>? ?? {};
-              
-              // Check if any participant other than the current user is typing
+
               bool isPartnerTyping = false;
               for (var entry in typingMap.entries) {
-                if (entry.key != uid) {
+                final value = entry.value;
+                final typedAt = value is Timestamp ? value.toDate() : null;
+                final isRecent =
+                    typedAt != null &&
+                    DateTime.now().difference(typedAt).inSeconds < 6;
+                if (entry.key != uid && isRecent) {
                   isPartnerTyping = true;
                   break;
                 }
               }
-              
+
               if (!isPartnerTyping) {
                 return const SizedBox.shrink();
               }
-              
+
               return const Align(
                 alignment: Alignment.centerLeft,
                 child: TypingIndicator(),
@@ -346,7 +347,9 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                       color: Colors.white,
                       boxShadow: [
                         BoxShadow(
-                          color: AppTheme.textDark.withValues(alpha: 0.05 * 255),
+                          color: AppTheme.textDark.withValues(
+                            alpha: 0.05 * 255,
+                          ),
                           blurRadius: 10,
                           offset: const Offset(0, -2),
                         ),
@@ -359,15 +362,20 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                           Container(
                             margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 8),
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
                             decoration: BoxDecoration(
                               color: AppTheme.lightPeach,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.edit,
-                                    size: 16, color: AppTheme.primaryOrange),
+                                const Icon(
+                                  Icons.edit,
+                                  size: 16,
+                                  color: AppTheme.primaryOrange,
+                                ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Column(
@@ -387,7 +395,9 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
-                                            fontSize: 12, color: Colors.black54),
+                                          fontSize: 12,
+                                          color: Colors.black54,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -407,59 +417,74 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                         Row(
                           children: [
                             // Attachment button
-                        IconButton(
-                          icon: const Icon(Icons.attach_file_rounded,
-                              color: AppTheme.primaryOrange),
-                          onPressed: () async {
-                            final result = await showMediaPickerSheet(context);
-                            if (result != null) {
-                              chatViewModel.sendMediaMessage(
-                                  result.file, result.type);
-                            }
-                          },
-                        ),
-                        // Mic button
-                        IconButton(
-                          icon: const Icon(Icons.mic,
-                              color: AppTheme.primaryOrange),
-                          onPressed: () =>
-                              setState(() => _showRecorder = true),
-                        ),
-                        Expanded(
-                          child: TextField(
-                            controller: _textController,
-                            decoration: const InputDecoration(
-                              hintText: 'Type a message...',
-                              contentPadding: EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 12),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.attach_file_rounded,
+                                color: AppTheme.primaryOrange,
+                              ),
+                              onPressed: () async {
+                                final result = await showMediaPickerSheet(
+                                  context,
+                                );
+                                if (result != null) {
+                                  chatViewModel.sendMediaMessage(
+                                    result.file,
+                                    result.type,
+                                  );
+                                }
+                              },
                             ),
-                            textCapitalization: TextCapitalization.sentences,
-                            onChanged: chatViewModel.onTextChanged,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          decoration: const BoxDecoration(
-                            color: AppTheme.primaryOrange,
-                            shape: BoxShape.circle,
-                          ),
-                          child: IconButton(
-                            icon: const Icon(Icons.send, color: Colors.white),
-                            onPressed: () {
-                              if (_textController.text.trim().isNotEmpty) {
-                                chatViewModel
-                                    .sendTextMessage(_textController.text);
-                                _textController.clear();
-                              }
-                            },
-                          ),
+                            // Mic button
+                            IconButton(
+                              icon: const Icon(
+                                Icons.mic,
+                                color: AppTheme.primaryOrange,
+                              ),
+                              onPressed: () =>
+                                  setState(() => _showRecorder = true),
+                            ),
+                            Expanded(
+                              child: TextField(
+                                controller: _textController,
+                                decoration: const InputDecoration(
+                                  hintText: 'Type a message...',
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                ),
+                                textCapitalization:
+                                    TextCapitalization.sentences,
+                                onChanged: chatViewModel.onTextChanged,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              decoration: const BoxDecoration(
+                                color: AppTheme.primaryOrange,
+                                shape: BoxShape.circle,
+                              ),
+                              child: IconButton(
+                                icon: const Icon(
+                                  Icons.send,
+                                  color: Colors.white,
+                                ),
+                                onPressed: () {
+                                  if (_textController.text.trim().isNotEmpty) {
+                                    chatViewModel.sendTextMessage(
+                                      _textController.text,
+                                    );
+                                    _textController.clear();
+                                  }
+                                },
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
         ],
       ),
     );

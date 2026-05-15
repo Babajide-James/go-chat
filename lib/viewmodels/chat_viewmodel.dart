@@ -46,7 +46,7 @@ class ChatViewModel extends ChangeNotifier {
   bool _isTyping = false;
   double? _mediaUploadProgress;
   CompressionResult? _lastCompression;
-  
+
   bool _isSearching = false;
   String _searchQuery = '';
 
@@ -59,6 +59,7 @@ class ChatViewModel extends ChangeNotifier {
   String get searchQuery => _searchQuery;
   String? get editingMessageId => _editingMessageId;
   String? get editingMessageText => _editingMessageText;
+  String? get currentUserId => _currentUserId;
 
   String _partnerName = 'Chat';
   String get partnerName => _partnerName;
@@ -75,16 +76,22 @@ class ChatViewModel extends ChangeNotifier {
           .doc(conversationId)
           .get();
       if (!convoDoc.exists) return;
-      final participants =
-          List<String>.from(convoDoc.data()?['participants'] ?? []);
-      final partnerId =
-          participants.firstWhere((p) => p != _currentUserId, orElse: () => '');
+      final participants = List<String>.from(
+        convoDoc.data()?['participants'] ?? [],
+      );
+      final partnerId = participants.firstWhere(
+        (p) => p != _currentUserId,
+        orElse: () => '',
+      );
       if (partnerId.isEmpty) return;
 
       final userDoc = await _firestoreService.getUser(partnerId);
       if (userDoc.exists) {
         final data = userDoc.data() as Map<String, dynamic>?;
-        final name = data?['displayName'] as String? ?? data?['email'] as String? ?? 'Chat';
+        final name =
+            data?['displayName'] as String? ??
+            data?['email'] as String? ??
+            'Chat';
         _partnerName = name;
         notifyListeners();
       }
@@ -107,8 +114,6 @@ class ChatViewModel extends ChangeNotifier {
   void onTextChanged(String text) {
     if (_currentUserId == null) return;
 
-    if (_typingDebounce?.isActive ?? false) _typingDebounce!.cancel();
-
     if (!_isTyping && text.isNotEmpty) {
       _isTyping = true;
       _firestoreService.updateTypingStatus(
@@ -123,12 +128,17 @@ class ChatViewModel extends ChangeNotifier {
       return;
     }
 
-    _typingDebounce = Timer(const Duration(milliseconds: 1000), () {
-      // Debounce logic - reset idle timer
-      _idleTimer?.cancel();
-      _idleTimer = Timer(const Duration(seconds: 2), () {
-        _clearTypingStatus();
-      });
+    _typingDebounce?.cancel();
+    _idleTimer?.cancel();
+    _typingDebounce = Timer(const Duration(milliseconds: 600), () {
+      _firestoreService.updateTypingStatus(
+        conversationId,
+        _currentUserId,
+        true,
+      );
+    });
+    _idleTimer = Timer(const Duration(seconds: 3), () {
+      _clearTypingStatus();
     });
   }
 
@@ -199,7 +209,10 @@ class ChatViewModel extends ChangeNotifier {
       );
       await _firestoreService.sendMessage(conversationId, message.toMap());
       await _firestoreService.updateConversationLastMessage(
-          conversationId, '🎤 Voice message', timestamp);
+        conversationId,
+        '🎤 Voice message',
+        timestamp,
+      );
       _scrollToBottom();
     } catch (e) {
       debugPrint('Error sending audio: $e');
@@ -264,7 +277,10 @@ class ChatViewModel extends ChangeNotifier {
 
       await _firestoreService.sendMessage(conversationId, message.toMap());
       await _firestoreService.updateConversationLastMessage(
-          conversationId, preview, timestamp);
+        conversationId,
+        preview,
+        timestamp,
+      );
       _scrollToBottom();
     } catch (e) {
       debugPrint('Error sending media: $e');
@@ -372,9 +388,15 @@ class ChatViewModel extends ChangeNotifier {
     if (_editingMessageId == null) return;
     try {
       await _firestoreService.editMessage(
-          conversationId, _editingMessageId!, newText);
+        conversationId,
+        _editingMessageId!,
+        newText,
+      );
       await _firestoreService.updateConversationLastMessage(
-          conversationId, 'Edited: $newText', Timestamp.now());
+        conversationId,
+        'Edited: $newText',
+        Timestamp.now(),
+      );
     } catch (e) {
       debugPrint('Error editing message: $e');
     } finally {
@@ -387,7 +409,10 @@ class ChatViewModel extends ChangeNotifier {
     if (uid == null) return;
     try {
       await _firestoreService.deleteMessageForMe(
-          conversationId, messageId, uid);
+        conversationId,
+        messageId,
+        uid,
+      );
     } catch (e) {
       debugPrint('Error deleting message for me: $e');
     }
@@ -396,9 +421,14 @@ class ChatViewModel extends ChangeNotifier {
   Future<void> deleteMessageForEveryone(String messageId) async {
     try {
       await _firestoreService.deleteMessageForEveryone(
-          conversationId, messageId);
+        conversationId,
+        messageId,
+      );
       await _firestoreService.updateConversationLastMessage(
-          conversationId, '🚫 This message was deleted.', Timestamp.now());
+        conversationId,
+        '🚫 This message was deleted.',
+        Timestamp.now(),
+      );
     } catch (e) {
       debugPrint('Error deleting message for everyone: $e');
     }

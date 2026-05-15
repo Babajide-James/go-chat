@@ -26,6 +26,14 @@ class FirestoreService {
         .get();
   }
 
+  Future<QuerySnapshot> getUsersForSearch({int limit = 100}) {
+    return _firestore
+        .collection(FirestorePaths.users)
+        .orderBy('displayName')
+        .limit(limit)
+        .get();
+  }
+
   // Conversations
   Stream<QuerySnapshot> getConversations(String uid) {
     return _firestore
@@ -40,6 +48,8 @@ class FirestoreService {
       'participants': participants,
       'createdAt': FieldValue.serverTimestamp(),
       'lastMessageAt': FieldValue.serverTimestamp(),
+      'lastMessage': 'New Chat',
+      'typing': {},
     });
   }
 
@@ -61,7 +71,9 @@ class FirestoreService {
   }
 
   Future<DocumentReference> sendMessage(
-      String conversationId, Map<String, dynamic> messageData) {
+    String conversationId,
+    Map<String, dynamic> messageData,
+  ) {
     return _firestore
         .collection(FirestorePaths.conversations)
         .doc(conversationId)
@@ -70,27 +82,37 @@ class FirestoreService {
   }
 
   Future<void> updateConversationLastMessage(
-      String conversationId, String text, Timestamp time) {
+    String conversationId,
+    String text,
+    Timestamp time,
+  ) {
     return _firestore
         .collection(FirestorePaths.conversations)
         .doc(conversationId)
-        .update({
-      'lastMessage': text,
-      'lastMessageAt': time,
-    });
+        .update({'lastMessage': text, 'lastMessageAt': time});
   }
 
-  Future<void> updateTypingStatus(String conversationId, String uid, bool isTyping) {
+  Future<void> updateTypingStatus(
+    String conversationId,
+    String uid,
+    bool isTyping,
+  ) {
     return _firestore
         .collection(FirestorePaths.conversations)
         .doc(conversationId)
         .update({
-      'typing.$uid': isTyping ? FieldValue.serverTimestamp() : FieldValue.delete(),
-    });
+          'typing.$uid': isTyping
+              ? FieldValue.serverTimestamp()
+              : FieldValue.delete(),
+        });
   }
 
   Future<void> updateMessageReaction(
-      String conversationId, String messageId, String uid, String? emoji) {
+    String conversationId,
+    String messageId,
+    String uid,
+    String? emoji,
+  ) {
     final ref = _firestore
         .collection(FirestorePaths.conversations)
         .doc(conversationId)
@@ -98,65 +120,70 @@ class FirestoreService {
         .doc(messageId);
 
     if (emoji == null) {
-      return ref.update({
-        'reactions.$uid': FieldValue.delete(),
-      });
+      return ref.update({'reactions.$uid': FieldValue.delete()});
     } else {
-      return ref.update({
-        'reactions.$uid': emoji,
-      });
+      return ref.update({'reactions.$uid': emoji});
     }
   }
 
   Future<void> markMessageAsRead(
-      String conversationId, String messageId, String uid) {
+    String conversationId,
+    String messageId,
+    String uid,
+  ) {
     return _firestore
         .collection(FirestorePaths.conversations)
         .doc(conversationId)
         .collection(FirestorePaths.messages)
         .doc(messageId)
         .update({
-      'readBy.$uid': FieldValue.serverTimestamp(),
-      'status': 'seen', // Simplifying status logic; effectively 'seen' when any recipient reads it
-    });
+          'readBy.$uid': FieldValue.serverTimestamp(),
+          'status':
+              'seen', // Simplifying status logic; effectively 'seen' when any recipient reads it
+        });
   }
 
   Future<void> editMessage(
-      String conversationId, String messageId, String newText) {
+    String conversationId,
+    String messageId,
+    String newText,
+  ) {
     return _firestore
         .collection(FirestorePaths.conversations)
         .doc(conversationId)
         .collection(FirestorePaths.messages)
         .doc(messageId)
-        .update({
-      'text': newText,
-      'editedAt': FieldValue.serverTimestamp(),
-    });
+        .update({'text': newText, 'editedAt': FieldValue.serverTimestamp()});
   }
 
   Future<void> deleteMessageForMe(
-      String conversationId, String messageId, String uid) {
+    String conversationId,
+    String messageId,
+    String uid,
+  ) {
     return _firestore
         .collection(FirestorePaths.conversations)
         .doc(conversationId)
         .collection(FirestorePaths.messages)
         .doc(messageId)
         .update({
-      'deletedFor': FieldValue.arrayUnion([uid]),
-    });
+          'deletedFor': FieldValue.arrayUnion([uid]),
+        });
   }
 
   Future<void> deleteMessageForEveryone(
-      String conversationId, String messageId) {
+    String conversationId,
+    String messageId,
+  ) {
     return _firestore
         .collection(FirestorePaths.conversations)
         .doc(conversationId)
         .collection(FirestorePaths.messages)
         .doc(messageId)
         .update({
-      'deletedForEveryone': true,
-      'text': null,
-      'mediaUrl': null, // optional: you could clean up storage too
-    });
+          'deletedForEveryone': true,
+          'text': null,
+          'mediaUrl': null, // optional: you could clean up storage too
+        });
   }
 }

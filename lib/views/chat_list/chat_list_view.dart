@@ -24,9 +24,7 @@ class ChatListView extends StatelessWidget {
       appBar: AppBar(
         title: Row(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            Image.asset('assets/images/go_logo.png', height: 30),
-          ],
+          children: [Image.asset('assets/images/go_logo.png', height: 30)],
         ),
         actions: [
           IconButton(
@@ -56,32 +54,32 @@ class ChatListView extends StatelessWidget {
             );
           }
 
-          return ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+          return ListView.builder(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 88),
             itemCount: docs.length,
-            separatorBuilder: (_, __) => Divider(
-              height: 1,
-              indent: 80,
-              color: AppTheme.lightPeach,
-            ),
             itemBuilder: (context, index) {
               final doc = docs[index];
               final data = doc.data() as Map<String, dynamic>;
 
-              final participants = List<String>.from(data['participants'] ?? [])
-                  .where((id) => id != myUid)
-                  .toList();
+              final participants = List<String>.from(
+                data['participants'] ?? [],
+              ).where((id) => id != myUid).toList();
 
-              final partnerId =
-                  participants.isNotEmpty ? participants.first : null;
+              final partnerId = participants.isNotEmpty
+                  ? participants.first
+                  : null;
               final lastMessage = data['lastMessage'] as String? ?? 'New Chat';
               final lastMessageAt = data['lastMessageAt'] as Timestamp?;
 
-              return _ConversationTile(
-                conversationId: doc.id,
-                partnerId: partnerId,
-                lastMessage: lastMessage,
-                lastMessageAt: lastMessageAt,
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _ConversationTile(
+                  conversationId: doc.id,
+                  partnerId: partnerId,
+                  lastMessage: lastMessage,
+                  lastMessageAt: lastMessageAt,
+                  isTyping: _hasActivePartnerTyping(data, myUid),
+                ),
               );
             },
           );
@@ -101,6 +99,19 @@ class ChatListView extends StatelessWidget {
       ),
     );
   }
+
+  bool _hasActivePartnerTyping(Map<String, dynamic> data, String? myUid) {
+    final typing = data['typing'] as Map<String, dynamic>? ?? {};
+    for (final entry in typing.entries) {
+      final typedAt = entry.value is Timestamp
+          ? (entry.value as Timestamp).toDate()
+          : null;
+      final isRecent =
+          typedAt != null && DateTime.now().difference(typedAt).inSeconds < 6;
+      if (entry.key != myUid && isRecent) return true;
+    }
+    return false;
+  }
 }
 
 /// A stateful tile that fetches the partner's display name asynchronously.
@@ -109,12 +120,14 @@ class _ConversationTile extends StatefulWidget {
   final String? partnerId;
   final String lastMessage;
   final Timestamp? lastMessageAt;
+  final bool isTyping;
 
   const _ConversationTile({
     required this.conversationId,
     required this.partnerId,
     required this.lastMessage,
     this.lastMessageAt,
+    required this.isTyping,
   });
 
   @override
@@ -142,7 +155,8 @@ class _ConversationTileState extends State<_ConversationTile> {
       if (doc.exists && mounted) {
         final data = doc.data() as Map<String, dynamic>?;
         setState(() {
-          _partnerName = data?['displayName'] as String? ??
+          _partnerName =
+              data?['displayName'] as String? ??
               data?['email'] as String? ??
               'Unknown';
           _loading = false;
@@ -171,67 +185,99 @@ class _ConversationTileState extends State<_ConversationTile> {
         ? _partnerName![0].toUpperCase()
         : '?';
 
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      leading: CircleAvatar(
-        radius: 26,
-        backgroundColor: AppTheme.darkOrange.withValues(alpha: 0.15 * 255),
-        child: _loading
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: AppTheme.primaryOrange,
-                ),
-              )
-            : Text(
-                initials,
-                style: const TextStyle(
-                  color: AppTheme.primaryOrange,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 18,
-                ),
-              ),
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: AppTheme.lightPeach.withValues(alpha: 0.8)),
       ),
-      title: _loading
-          ? Container(
-              height: 14,
-              width: 100,
-              decoration: BoxDecoration(
-                color: AppTheme.lightPeach,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            )
-          : Text(
-              _partnerName ?? 'Unknown',
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
-                color: AppTheme.textDark,
-              ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ChatView(conversationId: widget.conversationId),
             ),
-      subtitle: Text(
-        widget.lastMessage,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          fontSize: 13,
-          color: AppTheme.textLight,
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 26,
+                backgroundColor: AppTheme.darkOrange.withValues(alpha: 0.15),
+                child: _loading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppTheme.primaryOrange,
+                        ),
+                      )
+                    : Text(
+                        initials,
+                        style: const TextStyle(
+                          color: AppTheme.primaryOrange,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 18,
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _loading
+                        ? Container(
+                            height: 14,
+                            width: 100,
+                            decoration: BoxDecoration(
+                              color: AppTheme.lightPeach,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          )
+                        : Text(
+                            _partnerName ?? 'Unknown',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                              color: AppTheme.textDark,
+                            ),
+                          ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.isTyping ? 'typing...' : widget.lastMessage,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: widget.isTyping
+                            ? AppTheme.primaryOrange
+                            : AppTheme.textLight,
+                        fontWeight: widget.isTyping
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                _formatTime(widget.lastMessageAt),
+                style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
+              ),
+            ],
+          ),
         ),
       ),
-      trailing: Text(
-        _formatTime(widget.lastMessageAt),
-        style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
-      ),
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ChatView(conversationId: widget.conversationId),
-          ),
-        );
-      },
     );
   }
 }
