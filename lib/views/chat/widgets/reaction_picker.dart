@@ -20,7 +20,7 @@ class ReactionPicker extends StatelessWidget {
         borderRadius: BorderRadius.circular(30),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.textDark.withValues(alpha: 0.1 * 255),
+            color: AppTheme.textDark.withValues(alpha: 0.1),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),

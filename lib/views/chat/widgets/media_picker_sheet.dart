@@ -6,7 +6,8 @@ import '../../../core/theme/app_theme.dart';
 /// A bottom sheet for picking an image or video from gallery or camera.
 /// Returns the picked [File] and its [type] ('image' or 'video'), or null.
 Future<({File file, String type})?> showMediaPickerSheet(
-    BuildContext context) async {
+  BuildContext context,
+) async {
   return await showModalBottomSheet<({File file, String type})?>(
     context: context,
     backgroundColor: Colors.transparent,
@@ -57,7 +58,7 @@ class _MediaPickerSheet extends StatelessWidget {
               _PickerOption(
                 icon: Icons.photo_library_rounded,
                 label: 'Gallery',
-                color: AppTheme.primaryOrange,
+                // color: AppTheme.primaryOrange,
                 onTap: () async {
                   final picker = ImagePicker();
                   final xfile = await picker.pickImage(
@@ -65,17 +66,17 @@ class _MediaPickerSheet extends StatelessWidget {
                     imageQuality: 100,
                   );
                   if (xfile != null && context.mounted) {
-                    Navigator.pop(
-                      context,
-                      (file: File(xfile.path), type: 'image'),
-                    );
+                    Navigator.pop(context, (
+                      file: File(xfile.path),
+                      type: 'image',
+                    ));
                   }
                 },
               ),
               _PickerOption(
                 icon: Icons.camera_alt_rounded,
                 label: 'Camera',
-                color: AppTheme.darkOrange,
+                // color: AppTheme.darkOrange,
                 onTap: () async {
                   final picker = ImagePicker();
                   final xfile = await picker.pickImage(
@@ -83,28 +84,28 @@ class _MediaPickerSheet extends StatelessWidget {
                     imageQuality: 100,
                   );
                   if (xfile != null && context.mounted) {
-                    Navigator.pop(
-                      context,
-                      (file: File(xfile.path), type: 'image'),
-                    );
+                    Navigator.pop(context, (
+                      file: File(xfile.path),
+                      type: 'image',
+                    ));
                   }
                 },
               ),
               _PickerOption(
                 icon: Icons.videocam_rounded,
                 label: 'Video',
-                color: Colors.deepPurple,
+                // color: Colors.deepPurple,
                 onTap: () async {
                   final picker = ImagePicker();
                   final xfile = await picker.pickVideo(
                     source: ImageSource.gallery,
-                    maxDuration: const Duration(minutes: 2),
+                    maxDuration: const Duration(seconds: 30),
                   );
                   if (xfile != null && context.mounted) {
-                    Navigator.pop(
-                      context,
-                      (file: File(xfile.path), type: 'video'),
-                    );
+                    Navigator.pop(context, (
+                      file: File(xfile.path),
+                      type: 'video',
+                    ));
                   }
                 },
               ),
@@ -120,13 +121,13 @@ class _MediaPickerSheet extends StatelessWidget {
 class _PickerOption extends StatelessWidget {
   final IconData icon;
   final String label;
-  final Color color;
+  // final Color color;
   final VoidCallback onTap;
 
   const _PickerOption({
     required this.icon,
     required this.label,
-    required this.color,
+    // required this.color,
     required this.onTap,
   });
 
@@ -140,10 +141,10 @@ class _PickerOption extends StatelessWidget {
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
+              // color: color.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: color, size: 28),
+            child: Icon(icon, size: 28),
           ),
           const SizedBox(height: 8),
           Text(
@@ -151,7 +152,7 @@ class _PickerOption extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: AppTheme.textDark.withValues(alpha: 0.8 * 255),
+              color: AppTheme.textDark.withValues(alpha: 0.8),
             ),
           ),
         ],

@@ -55,7 +55,7 @@ class MessageBubble extends StatelessWidget {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: AppTheme.textDark.withValues(alpha: 0.05 * 255),
+                    color: AppTheme.textDark.withValues(alpha: 0.05),
                     blurRadius: 5,
                     offset: const Offset(0, 2),
                   ),
@@ -175,7 +175,7 @@ class MessageBubble extends StatelessWidget {
         border: Border.all(color: AppTheme.lightPeach, width: 1),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.textDark.withValues(alpha: 0.1 * 255),
+            color: AppTheme.textDark.withValues(alpha: 0.1),
             blurRadius: 2,
             offset: const Offset(0, 1),
           ),

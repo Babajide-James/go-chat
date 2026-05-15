@@ -21,8 +21,9 @@ class LocalDatabaseService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -40,6 +41,29 @@ class LocalDatabaseService {
         id TEXT PRIMARY KEY,
         conversationId TEXT NOT NULL,
         data TEXT NOT NULL,
+        createdAt INTEGER NOT NULL
+      )
+    ''');
+
+    await _createUploadQueueTable(db);
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await _createUploadQueueTable(db);
+    }
+  }
+
+  Future<void> _createUploadQueueTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS upload_queue (
+        id TEXT PRIMARY KEY,
+        conversationId TEXT NOT NULL,
+        firestoreMessageId TEXT NOT NULL,
+        localFilePath TEXT NOT NULL,
+        mediaType TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        retries INTEGER NOT NULL DEFAULT 0,
         createdAt INTEGER NOT NULL
       )
     ''');
@@ -112,5 +136,84 @@ class LocalDatabaseService {
     return maps.map((map) {
       return jsonDecode(map['data'] as String) as Map<String, dynamic>;
     }).toList();
+  }
+
+  // --- Upload Queue ---
+
+  Future<void> insertQueueItem({
+    required String id,
+    required String conversationId,
+    required String firestoreMessageId,
+    required String localFilePath,
+    required String mediaType,
+  }) async {
+    final db = await database;
+    await db.insert(
+      'upload_queue',
+      {
+        'id': id,
+        'conversationId': conversationId,
+        'firestoreMessageId': firestoreMessageId,
+        'localFilePath': localFilePath,
+        'mediaType': mediaType,
+        'status': 'pending',
+        'retries': 0,
+        'createdAt': DateTime.now().millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getQueueItems({String? status}) async {
+    final db = await database;
+    if (status != null) {
+      return db.query(
+        'upload_queue',
+        where: 'status = ?',
+        whereArgs: [status],
+        orderBy: 'createdAt ASC',
+      );
+    }
+    return db.query('upload_queue', orderBy: 'createdAt ASC');
+  }
+
+  Future<void> updateQueueItemStatus(String id, String status) async {
+    final db = await database;
+    await db.update(
+      'upload_queue',
+      {'status': status},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> incrementQueueItemRetries(String id) async {
+    final db = await database;
+    await db.rawUpdate(
+      'UPDATE upload_queue SET retries = retries + 1 WHERE id = ?',
+      [id],
+    );
+  }
+
+  Future<void> deleteQueueItem(String id) async {
+    final db = await database;
+    await db.delete(
+      'upload_queue',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<Map<String, dynamic>?> getQueueItemByFirestoreId(
+    String firestoreMessageId,
+  ) async {
+    final db = await database;
+    final results = await db.query(
+      'upload_queue',
+      where: 'firestoreMessageId = ?',
+      whereArgs: [firestoreMessageId],
+      limit: 1,
+    );
+    return results.isNotEmpty ? results.first : null;
   }
 }

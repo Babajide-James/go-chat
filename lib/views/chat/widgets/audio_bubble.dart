@@ -4,14 +4,18 @@ import '../../../core/theme/app_theme.dart';
 
 class AudioBubble extends StatefulWidget {
   final String audioUrl;
+  final String? localFilePath;
   final int durationSeconds;
   final bool isMine;
+  final String status; // 'sending', 'sent', 'delivered', 'seen'
 
   const AudioBubble({
     super.key,
     required this.audioUrl,
+    this.localFilePath,
     required this.durationSeconds,
     required this.isMine,
+    this.status = 'sent',
   });
 
   @override
@@ -27,6 +31,8 @@ class _AudioBubbleState extends State<AudioBubble> {
 
   // In-session cache: reuse the same URL without re-fetching
   static final Map<String, Duration> _durationCache = {};
+
+  bool get _isSending => widget.status == 'sending' && widget.audioUrl.isEmpty;
 
   @override
   void initState() {
@@ -45,7 +51,10 @@ class _AudioBubbleState extends State<AudioBubble> {
     _player.onDurationChanged.listen((dur) {
       if (mounted) {
         setState(() => _duration = dur);
-        _durationCache[widget.audioUrl] = dur;
+        final key = widget.audioUrl.isNotEmpty
+            ? widget.audioUrl
+            : widget.localFilePath ?? '';
+        if (key.isNotEmpty) _durationCache[key] = dur;
       }
     });
 
@@ -66,10 +75,18 @@ class _AudioBubbleState extends State<AudioBubble> {
   }
 
   Future<void> _togglePlayback() async {
+    if (_isSending) return; // Can't play while still uploading
+
     if (_playerState == PlayerState.playing) {
       await _player.pause();
     } else {
-      await _player.play(UrlSource(widget.audioUrl));
+      // Prefer network URL if available, fall back to local file
+      if (widget.audioUrl.isNotEmpty) {
+        await _player.play(UrlSource(widget.audioUrl));
+      } else if (widget.localFilePath != null &&
+          widget.localFilePath!.isNotEmpty) {
+        await _player.play(DeviceFileSource(widget.localFilePath!));
+      }
       await _player.setPlaybackRate(_speed);
     }
   }
@@ -98,7 +115,7 @@ class _AudioBubbleState extends State<AudioBubble> {
     final iconColor = widget.isMine ? Colors.white : AppTheme.primaryOrange;
     final textColor = widget.isMine ? Colors.white : AppTheme.textDark;
     final trackColor = widget.isMine
-        ? Colors.white.withValues(alpha: 0.4 * 255)
+        ? Colors.white.withValues(alpha: 0.4)
         : AppTheme.lightPeach;
     final activeTrackColor = widget.isMine ? Colors.white : AppTheme.darkOrange;
 
@@ -109,7 +126,7 @@ class _AudioBubbleState extends State<AudioBubble> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.textDark.withValues(alpha: 0.06 * 255),
+            color: AppTheme.textDark.withValues(alpha: 0.06),
             blurRadius: 5,
             offset: const Offset(0, 2),
           ),
@@ -118,15 +135,28 @@ class _AudioBubbleState extends State<AudioBubble> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Play/pause button
-          GestureDetector(
-            onTap: _togglePlayback,
-            child: Icon(
-              isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
-              color: iconColor,
-              size: 36,
+          // Play/pause button (or sending indicator)
+          if (_isSending)
+            Padding(
+              padding: const EdgeInsets.all(6),
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation(iconColor),
+                ),
+              ),
+            )
+          else
+            GestureDetector(
+              onTap: _togglePlayback,
+              child: Icon(
+                isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
+                color: iconColor,
+                size: 36,
+              ),
             ),
-          ),
           const SizedBox(width: 8),
           // Progress + duration
           Flexible(
@@ -149,30 +179,33 @@ class _AudioBubbleState extends State<AudioBubble> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      isPlaying || _position.inSeconds > 0
-                          ? _formatDuration(_position)
-                          : _formatDuration(_duration),
+                      _isSending
+                          ? 'Sending...'
+                          : isPlaying || _position.inSeconds > 0
+                              ? _formatDuration(_position)
+                              : _formatDuration(_duration),
                       style: TextStyle(fontSize: 11, color: textColor),
                     ),
                     // Speed toggle
-                    GestureDetector(
-                      onTap: _toggleSpeed,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: iconColor.withValues(alpha: 0.15 * 255),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '${_speed.toStringAsFixed(0)}×',
-                          style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: iconColor),
+                    if (!_isSending)
+                      GestureDetector(
+                        onTap: _toggleSpeed,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: iconColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${_speed.toStringAsFixed(0)}×',
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: iconColor),
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ],

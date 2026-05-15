@@ -8,6 +8,7 @@ import 'app.dart';
 import 'env/env.dart';
 import 'viewmodels/auth_viewmodel.dart';
 import 'viewmodels/chat_list_viewmodel.dart';
+import 'core/services/upload_queue_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +21,9 @@ void main() async {
     url: Env.supabaseUrl,
     anonKey: Env.supabaseAnonKey,
   );
+
+  // Initialize the offline upload queue — drains pending uploads on connectivity
+  UploadQueueService().startListening();
 
   runApp(
     MultiProvider(

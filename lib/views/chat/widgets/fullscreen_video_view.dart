@@ -38,7 +38,7 @@ class _FullscreenVideoViewState extends State<FullscreenVideoView> {
         playedColor: AppTheme.primaryOrange,
         handleColor: AppTheme.darkOrange,
         backgroundColor: Colors.white24,
-        bufferedColor: AppTheme.lightPeach.withValues(alpha: 0.5 * 255),
+        bufferedColor: AppTheme.lightPeach.withValues(alpha: 0.5),
       ),
     );
 

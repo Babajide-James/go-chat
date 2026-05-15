@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/theme/app_theme.dart';
@@ -6,19 +7,26 @@ import 'fullscreen_video_view.dart';
 
 class MediaBubble extends StatelessWidget {
   final String mediaUrl;
+  final String? localFilePath;
   final String type; // 'image' or 'video'
   final String? thumbnailUrl;
   final bool isMine;
   final double? uploadProgress; // null = fully uploaded
+  final String status; // 'sending', 'sent', 'delivered', 'seen', 'failed'
 
   const MediaBubble({
     super.key,
     required this.mediaUrl,
+    this.localFilePath,
     required this.type,
     this.thumbnailUrl,
     required this.isMine,
     this.uploadProgress,
+    this.status = 'sent',
   });
+
+  bool get _isUploading => status == 'sending' && mediaUrl.isEmpty;
+  bool get _isUploaded => mediaUrl.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +38,7 @@ class MediaBubble extends StatelessWidget {
     );
 
     return GestureDetector(
-      onTap: uploadProgress == null
+      onTap: _isUploaded
           ? () {
               if (type == 'image') {
                 Navigator.push(
@@ -67,26 +75,10 @@ class MediaBubble extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // Thumbnail / image
-              CachedNetworkImage(
-                imageUrl: thumbnailUrl ?? mediaUrl,
-                fit: BoxFit.cover,
-                placeholder: (_, __) => Container(
-                  color: AppTheme.lightPeach,
-                  child: const Center(
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation(AppTheme.primaryOrange),
-                      strokeWidth: 2,
-                    ),
-                  ),
-                ),
-                errorWidget: (_, __, ___) => Container(
-                  color: AppTheme.lightPeach,
-                  child: const Icon(Icons.broken_image, color: AppTheme.darkOrange),
-                ),
-              ),
-              // Play icon overlay for videos
-              if (type == 'video' && uploadProgress == null)
+              // Thumbnail / image — prefer local file when URL is not yet available
+              _buildImageContent(),
+              // Play icon overlay for videos (only when upload is complete)
+              if (type == 'video' && _isUploaded)
                 Center(
                   child: Container(
                     padding: const EdgeInsets.all(10),
@@ -99,7 +91,7 @@ class MediaBubble extends StatelessWidget {
                   ),
                 ),
               // Upload progress overlay
-              if (uploadProgress != null)
+              if (_isUploading && uploadProgress != null)
                 Container(
                   color: Colors.black.withValues(alpha: 0.45),
                   child: Center(
@@ -123,9 +115,112 @@ class MediaBubble extends StatelessWidget {
                     ),
                   ),
                 ),
+              // Sending state (queued, no progress yet)
+              if (_isUploading && uploadProgress == null)
+                Container(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  child: const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.cloud_upload_outlined,
+                            color: Colors.white70, size: 28),
+                        SizedBox(height: 4),
+                        Text(
+                          'Sending...',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildImageContent() {
+    // If we have a local file and the URL is not yet available, show from file
+    if (mediaUrl.isEmpty && localFilePath != null && localFilePath!.isNotEmpty) {
+      final file = File(localFilePath!);
+      if (type == 'image') {
+        return Image.file(
+          file,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _buildPlaceholder(),
+        );
+      } else {
+        // Video: show a dark placeholder with video icon
+        return Container(
+          color: Colors.black87,
+          child: const Center(
+            child: Icon(Icons.videocam_rounded, color: Colors.white54, size: 40),
+          ),
+        );
+      }
+    }
+
+    // Network image (uploaded)
+    if (mediaUrl.isNotEmpty) {
+      if (type == 'video') {
+        // For videos, show poster-frame style
+        return Container(
+          color: Colors.black87,
+          child: CachedNetworkImage(
+            imageUrl: thumbnailUrl ?? mediaUrl,
+            fit: BoxFit.cover,
+            placeholder: (_, __) => Container(
+              color: Colors.black87,
+              child: const Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation(AppTheme.primaryOrange),
+                  strokeWidth: 2,
+                ),
+              ),
+            ),
+            errorWidget: (_, __, ___) => Container(
+              color: Colors.black87,
+              child: const Center(
+                child: Icon(Icons.videocam_rounded,
+                    color: Colors.white54, size: 40),
+              ),
+            ),
+          ),
+        );
+      }
+      return CachedNetworkImage(
+        imageUrl: thumbnailUrl ?? mediaUrl,
+        fit: BoxFit.cover,
+        placeholder: (_, __) => Container(
+          color: AppTheme.lightPeach,
+          child: const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation(AppTheme.primaryOrange),
+              strokeWidth: 2,
+            ),
+          ),
+        ),
+        errorWidget: (_, __, ___) => Container(
+          color: AppTheme.lightPeach,
+          child: const Icon(Icons.broken_image, color: AppTheme.darkOrange),
+        ),
+      );
+    }
+
+    return _buildPlaceholder();
+  }
+
+  Widget _buildPlaceholder() {
+    return Container(
+      color: AppTheme.lightPeach,
+      child: const Center(
+        child: Icon(Icons.image_outlined, color: AppTheme.darkOrange, size: 32),
       ),
     );
   }

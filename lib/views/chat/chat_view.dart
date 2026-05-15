@@ -36,79 +36,12 @@ class _ChatViewContent extends StatefulWidget {
 class _ChatViewContentState extends State<_ChatViewContent> {
   final _textController = TextEditingController();
   bool _showRecorder = false;
-  CompressionResult? _lastShownCompression;
   String? _lastEditingMessageId;
 
   @override
   void dispose() {
     _textController.dispose();
     super.dispose();
-  }
-
-  void _maybeShowCompressionSnackbar(ChatViewModel vm) {
-    final result = vm.lastCompression;
-    if (result == null || result == _lastShownCompression) return;
-    _lastShownCompression = result;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          duration: const Duration(seconds: 4),
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          content: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [AppTheme.darkOrange, AppTheme.primaryOrange],
-              ),
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.primaryOrange.withValues(alpha: 0.35 * 255),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.compress_rounded,
-                  color: Colors.white,
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'Compressed & Sent!',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                      ),
-                      Text(
-                        result.summary,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    });
   }
 
   Widget _buildReadReceipt(String status, Map readBy) {
@@ -120,6 +53,9 @@ class _ChatViewContentState extends State<_ChatViewContent> {
       iconColor = Colors.blue.shade300;
     } else if (status == 'delivered') {
       iconData = Icons.done_all_rounded;
+      iconColor = Colors.grey;
+    } else if (status == 'sending') {
+      iconData = Icons.access_time_rounded;
       iconColor = Colors.grey;
     } else {
       iconData = Icons.check_rounded;
@@ -148,8 +84,6 @@ class _ChatViewContentState extends State<_ChatViewContent> {
         _textController.clear();
       });
     }
-
-    _maybeShowCompressionSnackbar(chatViewModel);
 
     return Scaffold(
       appBar: AppBar(
@@ -212,6 +146,13 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                     final data = doc.data() as Map<String, dynamic>;
                     final isMine = data['senderId'] == uid;
                     final type = data['type'] as String? ?? 'text';
+                    final status = data['status'] as String? ?? 'sent';
+                    final localFilePath = data['localFilePath'] as String?;
+                    final mediaUrl = data['mediaUrl'] as String? ?? '';
+
+                    // Get upload progress for this message from the queue
+                    final uploadProgress = chatViewModel.getUploadProgress(doc.id);
+                    final isFailed = chatViewModel.isUploadFailed(doc.id);
 
                     Widget content;
 
@@ -229,16 +170,38 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               AudioBubble(
-                                audioUrl: data['mediaUrl'] ?? '',
+                                audioUrl: mediaUrl,
+                                localFilePath: localFilePath,
                                 durationSeconds: data['duration'] as int? ?? 0,
                                 isMine: isMine,
+                                status: status,
                               ),
                               if (isMine) ...[
                                 const SizedBox(height: 2),
-                                _buildReadReceipt(
-                                  data['status'] as String? ?? 'sent',
-                                  data['readBy'] as Map? ?? {},
-                                ),
+                                if (isFailed)
+                                  GestureDetector(
+                                    onTap: () => chatViewModel.retryUpload(doc.id),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.error_outline,
+                                            size: 14, color: Colors.red.shade400),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Failed · Tap to retry',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.red.shade400,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                else
+                                  _buildReadReceipt(
+                                    status,
+                                    data['readBy'] as Map? ?? {},
+                                  ),
                               ],
                             ],
                           ),
@@ -258,16 +221,39 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               MediaBubble(
-                                mediaUrl: data['mediaUrl'] ?? '',
+                                mediaUrl: mediaUrl,
+                                localFilePath: localFilePath,
                                 type: type,
                                 isMine: isMine,
+                                uploadProgress: uploadProgress,
+                                status: status,
                               ),
                               if (isMine) ...[
                                 const SizedBox(height: 4),
-                                _buildReadReceipt(
-                                  data['status'] as String? ?? 'sent',
-                                  data['readBy'] as Map? ?? {},
-                                ),
+                                if (isFailed)
+                                  GestureDetector(
+                                    onTap: () => chatViewModel.retryUpload(doc.id),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.error_outline,
+                                            size: 14, color: Colors.red.shade400),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Failed · Tap to retry',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.red.shade400,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                else
+                                  _buildReadReceipt(
+                                    status,
+                                    data['readBy'] as Map? ?? {},
+                                  ),
                               ],
                             ],
                           ),
@@ -358,6 +344,7 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        // Edit message banner
                         if (chatViewModel.editingMessageId != null)
                           Container(
                             margin: const EdgeInsets.only(bottom: 8),
@@ -414,6 +401,7 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                               ],
                             ),
                           ),
+                        // Pending media attachment strip — does NOT cover send button
                         if (chatViewModel.pendingMediaFile != null)
                           Container(
                             margin: const EdgeInsets.only(bottom: 8),
@@ -424,37 +412,84 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                             ),
                             child: Row(
                               children: [
+                                // Thumbnail preview
                                 ClipRRect(
-                                  borderRadius: BorderRadius.circular(4),
+                                  borderRadius: BorderRadius.circular(6),
                                   child: chatViewModel.pendingMediaType == 'image'
                                       ? Image.file(
                                           chatViewModel.pendingMediaFile!,
-                                          width: 40,
-                                          height: 40,
+                                          width: 48,
+                                          height: 48,
                                           fit: BoxFit.cover,
                                         )
                                       : Container(
-                                          width: 40,
-                                          height: 40,
-                                          color: Colors.black87,
+                                          width: 48,
+                                          height: 48,
+                                          decoration: BoxDecoration(
+                                            color: Colors.black87,
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
                                           child: const Icon(
                                             Icons.videocam,
                                             color: Colors.white,
-                                            size: 20,
+                                            size: 24,
                                           ),
                                         ),
                                 ),
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 10),
+                                // File info
                                 Expanded(
-                                  child: Text(
-                                    'Attached ${chatViewModel.pendingMediaType == "image" ? "Image" : "Video"}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                      color: AppTheme.textDark,
-                                    ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        chatViewModel.pendingMediaType == 'image'
+                                            ? 'Image Attached'
+                                            : 'Video Attached',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                          color: AppTheme.textDark,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      if (chatViewModel.isCompressing)
+                                        Row(
+                                          children: [
+                                            SizedBox(
+                                              width: 12,
+                                              height: 12,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor: AlwaysStoppedAnimation(
+                                                  AppTheme.primaryOrange,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            const Text(
+                                              'Compressing...',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.black54,
+                                              ),
+                                            ),
+                                          ],
+                                        )
+                                      else if (chatViewModel.lastCompression != null)
+                                        Text(
+                                          chatViewModel.lastCompression!.summary,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.black54,
+                                          ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                    ],
                                   ),
                                 ),
+                                // Remove attachment button
                                 IconButton(
                                   icon: const Icon(Icons.close, size: 20),
                                   padding: EdgeInsets.zero,
@@ -464,6 +499,7 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                               ],
                             ),
                           ),
+                        // Input row
                         Row(
                           children: [
                             // Attachment button
@@ -509,6 +545,7 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                               ),
                             ),
                             const SizedBox(width: 8),
+                            // Send button — always visible, handles both text and media
                             Container(
                               decoration: const BoxDecoration(
                                 color: AppTheme.primaryOrange,
@@ -519,21 +556,25 @@ class _ChatViewContentState extends State<_ChatViewContent> {
                                   Icons.send,
                                   color: Colors.white,
                                 ),
-                                onPressed: () {
-                                  if (chatViewModel.pendingMediaFile != null) {
-                                    chatViewModel.sendMediaMessage(
-                                      chatViewModel.pendingMediaFile!,
-                                      chatViewModel.pendingMediaType!,
-                                    );
-                                    chatViewModel.clearPendingMedia();
-                                  }
-                                  if (_textController.text.trim().isNotEmpty) {
-                                    chatViewModel.sendTextMessage(
-                                      _textController.text,
-                                    );
-                                    _textController.clear();
-                                  }
-                                },
+                                onPressed: chatViewModel.isCompressing
+                                    ? null // Disable while compressing
+                                    : () {
+                                        // Send pending media if attached
+                                        if (chatViewModel.pendingMediaFile != null) {
+                                          chatViewModel.sendMediaMessage(
+                                            chatViewModel.pendingMediaFile!,
+                                            chatViewModel.pendingMediaType!,
+                                          );
+                                          chatViewModel.clearPendingMedia();
+                                        }
+                                        // Send text if typed
+                                        if (_textController.text.trim().isNotEmpty) {
+                                          chatViewModel.sendTextMessage(
+                                            _textController.text,
+                                          );
+                                          _textController.clear();
+                                        }
+                                      },
                               ),
                             ),
                           ],

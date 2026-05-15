@@ -3,8 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import '../core/services/firestore_service.dart';
-import '../core/services/storage_service.dart';
+import '../core/services/upload_queue_service.dart';
 import '../core/constants/firestore_paths.dart';
 import '../core/utils/media_compressor.dart';
 import '../core/enums/message_type.dart';
@@ -36,15 +38,16 @@ class CompressionResult {
 class ChatViewModel extends ChangeNotifier {
   final String conversationId;
   final FirestoreService _firestoreService = FirestoreService();
+  final UploadQueueService _uploadQueue = UploadQueueService();
   final String? _currentUserId = FirebaseAuth.instance.currentUser?.uid;
   final ScrollController scrollController = ScrollController();
 
   StreamSubscription? _messagesSubscription;
+  StreamSubscription<Map<String, double>>? _progressSubscription;
   Timer? _typingDebounce;
   Timer? _idleTimer;
 
   bool _isTyping = false;
-  double? _mediaUploadProgress;
   CompressionResult? _lastCompression;
 
   bool _isSearching = false;
@@ -53,28 +56,85 @@ class ChatViewModel extends ChangeNotifier {
   String? _editingMessageId;
   String? _editingMessageText;
 
-  double? get mediaUploadProgress => _mediaUploadProgress;
+  bool _isCompressing = false;
+
   CompressionResult? get lastCompression => _lastCompression;
   bool get isSearching => _isSearching;
   String get searchQuery => _searchQuery;
   String? get editingMessageId => _editingMessageId;
   String? get editingMessageText => _editingMessageText;
   String? get currentUserId => _currentUserId;
+  bool get isCompressing => _isCompressing;
 
+  // --- Pending media attachment (preview before send) ---
   File? _pendingMediaFile;
   String? _pendingMediaType;
   File? get pendingMediaFile => _pendingMediaFile;
   String? get pendingMediaType => _pendingMediaType;
 
+  // --- Per-message upload progress from the queue service ---
+  Map<String, double> _uploadProgressMap = {};
+  Map<String, double> get uploadProgressMap => _uploadProgressMap;
+
+  /// Returns upload progress for a specific message, or null if not uploading.
+  double? getUploadProgress(String messageId) {
+    final progress = _uploadProgressMap[messageId];
+    if (progress == null) return null;
+    if (progress < 0) return null; // -1.0 means failed
+    return progress;
+  }
+
+  /// Returns true if the message upload has failed.
+  bool isUploadFailed(String messageId) {
+    return _uploadProgressMap[messageId] == -1.0;
+  }
+
   void setPendingMedia(File file, String type) {
     _pendingMediaFile = file;
     _pendingMediaType = type;
+    _lastCompression = null;
+    _isCompressing = true;
     notifyListeners();
+
+    // Compress in background, then update with result
+    _compressPendingMedia(file, type);
+  }
+
+  Future<void> _compressPendingMedia(File file, String type) async {
+    try {
+      final originalBytes = await file.length();
+      final originalMb = originalBytes / (1024 * 1024);
+
+      File compressed;
+      if (type == 'image') {
+        compressed = await MediaCompressor.compressImage(file);
+      } else {
+        compressed = await MediaCompressor.compressVideo(file);
+      }
+
+      final compressedBytes = await compressed.length();
+      final compressedMb = compressedBytes / (1024 * 1024);
+
+      _pendingMediaFile = compressed;
+      _lastCompression = CompressionResult(
+        originalMb: originalMb,
+        compressedMb: compressedMb,
+        type: type,
+      );
+      _isCompressing = false;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error compressing media: $e');
+      _isCompressing = false;
+      notifyListeners();
+    }
   }
 
   void clearPendingMedia() {
     _pendingMediaFile = null;
     _pendingMediaType = null;
+    _lastCompression = null;
+    _isCompressing = false;
     notifyListeners();
   }
 
@@ -83,6 +143,16 @@ class ChatViewModel extends ChangeNotifier {
 
   ChatViewModel(this.conversationId) {
     _resolvePartnerName();
+    _listenToUploadProgress();
+  }
+
+  void _listenToUploadProgress() {
+    _progressSubscription = _uploadQueue.progressStream.listen((progress) {
+      _uploadProgressMap = progress;
+      notifyListeners();
+    });
+    // Also grab current state
+    _uploadProgressMap = Map.from(_uploadQueue.currentProgress);
   }
 
   /// Fetches conversation doc → finds partner UID → fetches their displayName.
@@ -203,79 +273,92 @@ class ChatViewModel extends ChangeNotifier {
     }
   }
 
+  /// Copy a file to a permanent local directory so it survives between sessions.
+  Future<File> _copyToPermanentStorage(File file, String subfolder) async {
+    final appDir = await getApplicationDocumentsDirectory();
+    final uploadDir = Directory(p.join(appDir.path, 'go_chat_uploads', subfolder));
+    if (!await uploadDir.exists()) {
+      await uploadDir.create(recursive: true);
+    }
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}_${p.basename(file.path)}';
+    final permanentPath = p.join(uploadDir.path, fileName);
+    return await file.copy(permanentPath);
+  }
+
+  /// Send an audio message with offline-first queue.
+  ///
+  /// 1. Copies the recorded file to permanent storage
+  /// 2. Inserts a placeholder Firestore doc (status: sending)
+  /// 3. Enqueues the upload — UploadQueueService handles the rest
   Future<void> sendAudioMessage(String filePath, int durationSeconds) async {
     final uid = _currentUserId;
     if (uid == null) return;
 
     try {
+      // Copy to permanent local storage
       final file = File(filePath);
-      final url = await StorageService().uploadAudio(file);
+      final permanentFile = await _copyToPermanentStorage(file, 'audio');
+
       final timestamp = Timestamp.now();
       final message = Message(
         id: '',
         senderId: uid,
         type: MessageType.audio,
-        mediaUrl: url,
         duration: durationSeconds,
         reactions: {},
-        status: MessageStatus.sent,
+        status: MessageStatus.sending,
         readBy: {},
         deletedFor: [],
         deletedForEveryone: false,
         createdAt: timestamp,
       );
-      await _firestoreService.sendMessage(conversationId, message.toMap());
+
+      final messageData = message.toMap();
+      messageData['localFilePath'] = permanentFile.path;
+
+      // Insert placeholder doc — Firestore offline persistence queues this
+      final docRef = await _firestoreService.sendMessage(
+        conversationId,
+        messageData,
+      );
+
       await _firestoreService.updateConversationLastMessage(
         conversationId,
         '🎤 Voice message',
         timestamp,
       );
+
+      // Enqueue for upload
+      await _uploadQueue.enqueue(
+        conversationId: conversationId,
+        firestoreMessageId: docRef.id,
+        localFilePath: permanentFile.path,
+        mediaType: 'audio',
+      );
+
       _scrollToBottom();
     } catch (e) {
       debugPrint('Error sending audio: $e');
     }
   }
 
+  /// Send an image/video message with offline-first queue.
+  ///
+  /// Expects the file to already be compressed (done in setPendingMedia).
+  /// 1. Copies compressed file to permanent storage
+  /// 2. Inserts a placeholder Firestore doc (status: sending)
+  /// 3. Enqueues the upload — UploadQueueService handles the rest
   Future<void> sendMediaMessage(File file, String type) async {
     final uid = _currentUserId;
     if (uid == null) return;
 
-    _mediaUploadProgress = 0.0;
-    notifyListeners();
-
     try {
-      // Measure original size
-      final originalBytes = await file.length();
-      final originalMb = originalBytes / (1024 * 1024);
-
-      // Compress before upload
-      File compressed;
-      if (type == 'image') {
-        compressed = await MediaCompressor.compressImage(file);
-      } else {
-        compressed = await MediaCompressor.compressVideo(file);
-      }
-
-      // Measure compressed size and expose to UI
-      final compressedBytes = await compressed.length();
-      final compressedMb = compressedBytes / (1024 * 1024);
-      _lastCompression = CompressionResult(
-        originalMb: originalMb,
-        compressedMb: compressedMb,
-        type: type,
-      );
-      notifyListeners();
-
-      final url = await StorageService().uploadMedia(
-        compressed,
+      // Copy to permanent local storage
+      final permanentFile = await _copyToPermanentStorage(
+        file,
         type == 'image' ? 'images' : 'videos',
-        onProgress: (p) {
-          _mediaUploadProgress = p;
-          notifyListeners();
-        },
       );
 
-      final cleanUrl = StorageService.cleanUrl(url);
       final timestamp = Timestamp.now();
       final preview = type == 'image' ? '📷 Photo' : '🎬 Video';
 
@@ -283,28 +366,46 @@ class ChatViewModel extends ChangeNotifier {
         id: '',
         senderId: uid,
         type: type == 'image' ? MessageType.image : MessageType.video,
-        mediaUrl: cleanUrl,
         reactions: {},
-        status: MessageStatus.sent,
+        status: MessageStatus.sending,
         readBy: {},
         deletedFor: [],
         deletedForEveryone: false,
         createdAt: timestamp,
       );
 
-      await _firestoreService.sendMessage(conversationId, message.toMap());
+      final messageData = message.toMap();
+      messageData['localFilePath'] = permanentFile.path;
+
+      // Insert placeholder doc — visible immediately in chat
+      final docRef = await _firestoreService.sendMessage(
+        conversationId,
+        messageData,
+      );
+
       await _firestoreService.updateConversationLastMessage(
         conversationId,
         preview,
         timestamp,
       );
+
+      // Enqueue for upload
+      await _uploadQueue.enqueue(
+        conversationId: conversationId,
+        firestoreMessageId: docRef.id,
+        localFilePath: permanentFile.path,
+        mediaType: type,
+      );
+
       _scrollToBottom();
     } catch (e) {
       debugPrint('Error sending media: $e');
-    } finally {
-      _mediaUploadProgress = null;
-      notifyListeners();
     }
+  }
+
+  /// Retry a failed upload for a specific message.
+  Future<void> retryUpload(String messageId) async {
+    await _uploadQueue.retryMessage(messageId);
   }
 
   Future<void> toggleReaction(String messageId, String emoji) async {
@@ -454,6 +555,7 @@ class ChatViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _messagesSubscription?.cancel();
+    _progressSubscription?.cancel();
     _typingDebounce?.cancel();
     _idleTimer?.cancel();
     _clearTypingStatus();
