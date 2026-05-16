@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../viewmodels/chat_list_viewmodel.dart';
 import '../../core/services/firestore_service.dart';
+import '../../core/services/local_database_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/loading_indicator.dart';
 import '../../core/widgets/empty_state.dart';
@@ -148,6 +149,7 @@ class _ConversationTile extends StatefulWidget {
 
 class _ConversationTileState extends State<_ConversationTile> {
   final FirestoreService _fs = FirestoreService();
+  final LocalDatabaseService _localDb = LocalDatabaseService();
   String? _partnerName;
   bool _loading = true;
 
@@ -162,22 +164,40 @@ class _ConversationTileState extends State<_ConversationTile> {
       setState(() => _loading = false);
       return;
     }
+    
+    // Check local database first
+    final cachedUser = await _localDb.getCachedUser(widget.partnerId!);
+    if (cachedUser != null && mounted) {
+      setState(() {
+        _partnerName = cachedUser['displayName'] as String? ??
+            cachedUser['email'] as String? ??
+            'Unknown';
+        _loading = false;
+      });
+    }
+
     try {
       final doc = await _fs.getUser(widget.partnerId!);
-      if (doc.exists && mounted) {
+      if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>?;
-        setState(() {
-          _partnerName =
-              data?['displayName'] as String? ??
-              data?['email'] as String? ??
-              'Unknown';
-          _loading = false;
-        });
-      } else if (mounted) {
+        if (data != null) {
+          // Cache for next time
+          await _localDb.cacheUser(widget.partnerId!, data);
+          if (mounted) {
+            setState(() {
+              _partnerName =
+                  data['displayName'] as String? ??
+                  data['email'] as String? ??
+                  'Unknown';
+              _loading = false;
+            });
+          }
+        }
+      } else if (mounted && cachedUser == null) {
         setState(() => _loading = false);
       }
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && cachedUser == null) setState(() => _loading = false);
     }
   }
 

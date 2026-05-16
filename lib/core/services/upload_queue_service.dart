@@ -168,6 +168,9 @@ class UploadQueueService {
       debugPrint('Upload queue: successfully uploaded $mediaType for message $firestoreMessageId');
     } catch (e) {
       debugPrint('Upload queue: failed to upload item $id — $e');
+      if (e.toString().contains('row-level security') || e.toString().contains('403') || e.toString().contains('401')) {
+        debugPrint('WARNING: Supabase Storage upload failed due to permissions. Since users are authenticated via Firebase Auth, they are considered "anon" by Supabase. Please ensure your Supabase Storage bucket "$mediaType" has a public INSERT policy for anon users, or the upload will permanently fail.');
+      }
       await _localDb.incrementQueueItemRetries(id);
       await _localDb.updateQueueItemStatus(id, 'failed');
       _progressMap[firestoreMessageId] = -1.0; // Signal failure to UI

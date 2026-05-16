@@ -38,24 +38,19 @@ class StorageService {
     try {
       final fileName = '${_uuid.v4()}_${file.path.split('/').last}';
       final path = '$folder/$fileName';
-      final bytes = await file.readAsBytes();
-      final totalBytes = bytes.length;
       const chunkSize = 256 * 1024; // 256 KB chunks
-      int uploaded = 0;
 
-      // Supabase upload in one shot; simulate progress via byte tracking
+      // Supabase upload in one shot; simulate progress
       onProgress?.call(0.05);
-      await _supabase.storage.from(_bucketName).uploadBinary(
+      await _supabase.storage.from(_bucketName).upload(
             path,
-            bytes,
+            file,
             fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
           );
       onProgress?.call(1.0);
 
       final url = _supabase.storage.from(_bucketName).getPublicUrl(path);
-      // suppress unused warning
-      uploaded = totalBytes;
-      return '${url}?uploaded=$uploaded&chunk=$chunkSize';
+      return '${url}?uploaded=true&chunk=$chunkSize';
     } catch (e) {
       throw Exception('Failed to upload media: $e');
     }

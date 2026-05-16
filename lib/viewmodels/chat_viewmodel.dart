@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import '../core/services/firestore_service.dart';
 import '../core/services/upload_queue_service.dart';
+import '../core/services/local_database_service.dart';
 import '../core/constants/firestore_paths.dart';
 import '../core/utils/media_compressor.dart';
 import '../core/enums/message_type.dart';
@@ -39,6 +40,7 @@ class ChatViewModel extends ChangeNotifier {
   final String conversationId;
   final FirestoreService _firestoreService = FirestoreService();
   final UploadQueueService _uploadQueue = UploadQueueService();
+  final LocalDatabaseService _localDb = LocalDatabaseService();
   final String? _currentUserId = FirebaseAuth.instance.currentUser?.uid;
   final ScrollController scrollController = ScrollController();
 
@@ -172,15 +174,27 @@ class ChatViewModel extends ChangeNotifier {
       );
       if (partnerId.isEmpty) return;
 
+      // Check local database first
+      final cachedUser = await _localDb.getCachedUser(partnerId);
+      if (cachedUser != null) {
+        _partnerName = cachedUser['displayName'] as String? ??
+            cachedUser['email'] as String? ??
+            'Chat';
+        notifyListeners();
+      }
+
       final userDoc = await _firestoreService.getUser(partnerId);
       if (userDoc.exists) {
         final data = userDoc.data() as Map<String, dynamic>?;
-        final name =
-            data?['displayName'] as String? ??
-            data?['email'] as String? ??
-            'Chat';
-        _partnerName = name;
-        notifyListeners();
+        if (data != null) {
+          await _localDb.cacheUser(partnerId, data);
+          final name =
+              data['displayName'] as String? ??
+              data['email'] as String? ??
+              'Chat';
+          _partnerName = name;
+          notifyListeners();
+        }
       }
     } catch (e) {
       debugPrint('Error resolving partner name: $e');

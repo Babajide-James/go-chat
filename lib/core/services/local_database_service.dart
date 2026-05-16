@@ -21,7 +21,7 @@ class LocalDatabaseService {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -46,11 +46,15 @@ class LocalDatabaseService {
     ''');
 
     await _createUploadQueueTable(db);
+    await _createUsersTable(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await _createUploadQueueTable(db);
+    }
+    if (oldVersion < 3) {
+      await _createUsersTable(db);
     }
   }
 
@@ -67,6 +71,45 @@ class LocalDatabaseService {
         createdAt INTEGER NOT NULL
       )
     ''');
+  }
+
+  Future<void> _createUsersTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        data TEXT NOT NULL,
+        updatedAt INTEGER NOT NULL
+      )
+    ''');
+  }
+
+  // --- Users ---
+
+  Future<void> cacheUser(String uid, Map<String, dynamic> userData) async {
+    final db = await database;
+    await db.insert(
+      'users',
+      {
+        'id': uid,
+        'data': jsonEncode(userData),
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<Map<String, dynamic>?> getCachedUser(String uid) async {
+    final db = await database;
+    final results = await db.query(
+      'users',
+      where: 'id = ?',
+      whereArgs: [uid],
+      limit: 1,
+    );
+    if (results.isNotEmpty) {
+      return jsonDecode(results.first['data'] as String) as Map<String, dynamic>;
+    }
+    return null;
   }
 
   // --- Conversations ---

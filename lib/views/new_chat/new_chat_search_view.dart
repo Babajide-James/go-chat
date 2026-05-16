@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/firestore_service.dart';
+import '../../core/services/local_database_service.dart';
 import '../../viewmodels/chat_list_viewmodel.dart';
 import '../../core/widgets/loading_indicator.dart';
 import '../../core/widgets/empty_state.dart';
@@ -19,6 +20,7 @@ class NewChatSearchView extends StatefulWidget {
 class _NewChatSearchViewState extends State<NewChatSearchView> {
   final _searchController = TextEditingController();
   final FirestoreService _firestoreService = FirestoreService();
+  final LocalDatabaseService _localDb = LocalDatabaseService();
 
   List<DocumentSnapshot> _searchResults = [];
   bool _isLoading = false;
@@ -160,6 +162,7 @@ class _NewChatSearchViewState extends State<NewChatSearchView> {
                         title: Text(displayName),
                         subtitle: Text(userData['email'] as String? ?? ''),
                         onTap: () async {
+                          await _localDb.cacheUser(userDoc.id, userData);
                           final convId = await chatListViewModel
                               .createConversation(userDoc.id);
                           if (convId != null && context.mounted) {
