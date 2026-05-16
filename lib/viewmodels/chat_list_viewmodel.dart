@@ -8,7 +8,7 @@ import '../core/services/local_database_service.dart';
 class ChatListViewModel extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
   final LocalDatabaseService _localDb = LocalDatabaseService();
-  final String? _currentUserId = FirebaseAuth.instance.currentUser?.uid;
+  String? _currentUserId;
 
   List<Map<String, dynamic>> _conversations = [];
   List<Map<String, dynamic>> get conversations => _conversations;
@@ -17,13 +17,28 @@ class ChatListViewModel extends ChangeNotifier {
   bool get isLoading => _isLoading;
 
   StreamSubscription? _sub;
+  StreamSubscription? _authSub;
 
   ChatListViewModel() {
-    _init();
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null) {
+        if (_currentUserId != user.uid) {
+          _currentUserId = user.uid;
+          _init();
+        }
+      } else {
+        _currentUserId = null;
+        _conversations = [];
+        _isLoading = false;
+        _sub?.cancel();
+        notifyListeners();
+      }
+    });
   }
 
   void _init() async {
-    if (_currentUserId == null) return;
+    final uid = _currentUserId;
+    if (uid == null) return;
     
     // 1. Load from local DB immediately
     _conversations = await _localDb.getCachedConversations();
@@ -31,7 +46,7 @@ class ChatListViewModel extends ChangeNotifier {
     notifyListeners();
 
     // 2. Listen to remote changes
-    _sub = _firestoreService.getConversations(_currentUserId).listen((snapshot) {
+    _sub = _firestoreService.getConversations(uid).listen((snapshot) {
       final docs = snapshot.docs.map((d) {
         var data = d.data() as Map<String, dynamic>;
         data['id'] = d.id;
@@ -68,11 +83,19 @@ class ChatListViewModel extends ChangeNotifier {
   }
 
   Future<String?> createConversation(String otherUserId) async {
-    final uid = _currentUserId;
+    final uid = _currentUserId ?? FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return null;
     
     try {
-      // Check if conversation already exists (simplified check)
+      // Check if conversation already exists in local list first
+      for (var conv in _conversations) {
+        final participants = List<String>.from(conv['participants'] ?? []);
+        if (participants.contains(otherUserId)) {
+          return conv['id']; // Return existing conversation ID
+        }
+      }
+
+      // Check if conversation already exists (fallback query if not locally synced)
       final conversations = await FirebaseFirestore.instance
           .collection('conversations')
           .where('participants', arrayContains: uid)
@@ -100,6 +123,7 @@ class ChatListViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _sub?.cancel();
+    _authSub?.cancel();
     super.dispose();
   }
 }

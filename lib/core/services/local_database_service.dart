@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
@@ -91,7 +92,12 @@ class LocalDatabaseService {
       'users',
       {
         'id': uid,
-        'data': jsonEncode(userData),
+        'data': jsonEncode(userData, toEncodable: (item) {
+          if (item is Timestamp) {
+            return item.toDate().toIso8601String();
+          }
+          return item;
+        }),
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
@@ -123,7 +129,12 @@ class LocalDatabaseService {
         'conversations',
         {
           'id': convo['id'],
-          'data': jsonEncode(convo),
+          'data': jsonEncode(convo, toEncodable: (item) {
+            if (item is Timestamp) {
+              return item.toDate().toIso8601String();
+            }
+            return item;
+          }),
           'updatedAt': DateTime.now().millisecondsSinceEpoch,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
@@ -157,7 +168,12 @@ class LocalDatabaseService {
         {
           'id': msg['id'] ?? msg['createdAt'].toString(),
           'conversationId': conversationId,
-          'data': jsonEncode(msg),
+          'data': jsonEncode(msg, toEncodable: (item) {
+            if (item is Timestamp) {
+              return item.toDate().toIso8601String();
+            }
+            return item;
+          }),
           'createdAt': DateTime.now().millisecondsSinceEpoch,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,

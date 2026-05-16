@@ -71,10 +71,12 @@ class ChatListView extends StatelessWidget {
                   ? participants.first
                   : null;
               final lastMessage = data['lastMessage'] as String? ?? 'New Chat';
-              
+
               Timestamp? lastMessageAt;
               if (data['lastMessageAt'] is String) {
-                lastMessageAt = Timestamp.fromDate(DateTime.parse(data['lastMessageAt']));
+                lastMessageAt = Timestamp.fromDate(
+                  DateTime.parse(data['lastMessageAt']),
+                );
               } else if (data['lastMessageAt'] is Timestamp) {
                 lastMessageAt = data['lastMessageAt'];
               }
@@ -164,12 +166,13 @@ class _ConversationTileState extends State<_ConversationTile> {
       setState(() => _loading = false);
       return;
     }
-    
+
     // Check local database first
     final cachedUser = await _localDb.getCachedUser(widget.partnerId!);
     if (cachedUser != null && mounted) {
       setState(() {
-        _partnerName = cachedUser['displayName'] as String? ??
+        _partnerName =
+            cachedUser['displayName'] as String? ??
             cachedUser['email'] as String? ??
             'Unknown';
         _loading = false;
